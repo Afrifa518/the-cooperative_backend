@@ -395,3 +395,29 @@ async def get_one_shares_account_transactions(member_shares_acc_id: int,
         .all()
 
     return accounts_transaction
+
+
+@router.get("/mass/form/{association_id}")
+async def mass_transaction_form(association_id: int,
+                                user: dict = Depends(get_current_user),
+                                db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    members = db.query(models.Members.firstname,
+                       models.Members.lastname,
+                       models.Members.member_id,
+                       models.AssociationMembers.association_members_id) \
+        .select_from(models.Association) \
+        .join(models.AssociationMembers, models.Association.association_id == models.AssociationMembers.association_id) \
+        .join(models.Members, models.Members.member_id == models.AssociationMembers.members_id) \
+        .filter(models.Association.association_id == association_id) \
+        .all()
+
+    info = db.query(models.MemberSavingsAccount.id,
+                    models.SavingsAccount.account_name) \
+        .select_from(models.MemberSavingsAccount) \
+        .join(models.SavingsAccount, models.MemberSavingsAccount.savings_id == models.SavingsAccount.id) \
+        .all()
+
+    return members, info
