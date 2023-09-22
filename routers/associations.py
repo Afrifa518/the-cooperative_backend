@@ -1,4 +1,7 @@
 import sys
+from datetime import datetime
+
+from sqlalchemy import desc, func, select
 
 sys.path.append("../..")
 
@@ -484,3 +487,259 @@ async def get_disbursed_loans_in_association(association_id: int,
         })
 
     return results
+
+
+@router.get("/passbook/{association_id}")
+async def get_association_passbook_info(association_id: int,
+                                        user: dict = Depends(get_current_user),
+                                        db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    all_savings_acc = db.query(models.MemberSavingsAccount.current_balance,
+                               models.MemberSavingsAccount.member_id,
+                               models.MemberSavingsAccount.association_member_id,
+                               models.MemberSavingsAccount.id,
+                               models.SavingsAccount.account_name,
+                               models.Members.firstname,
+                               models.Members.lastname) \
+        .select_from(models.Association) \
+        .join(models.AssociationMembers, models.AssociationMembers.association_id == models.Association.association_id) \
+        .join(models.MemberSavingsAccount,
+              models.MemberSavingsAccount.association_member_id == models.AssociationMembers.association_members_id) \
+        .join(models.SavingsAccount, models.SavingsAccount.id == models.MemberSavingsAccount.savings_id) \
+        .join(models.Members, models.Members.member_id == models.MemberSavingsAccount.member_id) \
+        .filter(models.Association.association_id == association_id) \
+        .order_by(desc(models.AssociationMembers.association_members_id)) \
+        .all()
+
+    all_loans_acc = db.query(models.MemberLoanAccount.current_balance,
+                             models.MemberLoanAccount.member_id,
+                             models.MemberLoanAccount.association_member_id,
+                             models.MemberLoanAccount.id,
+                             models.LoanAccount.account_name,
+                             models.Members.firstname,
+                             models.Members.lastname) \
+        .select_from(models.Association) \
+        .join(models.AssociationMembers, models.AssociationMembers.association_id == models.Association.association_id) \
+        .join(models.MemberLoanAccount,
+              models.MemberLoanAccount.association_member_id == models.AssociationMembers.association_members_id) \
+        .join(models.LoanAccount, models.LoanAccount.id == models.MemberLoanAccount.loan_id) \
+        .join(models.Members, models.Members.member_id == models.MemberLoanAccount.member_id) \
+        .filter(models.Association.association_id == association_id) \
+        .order_by(desc(models.AssociationMembers.association_members_id)) \
+        .all()
+
+    # print(all_loans_acc)
+
+    all_shares_acc = db.query(models.MemberShareAccount.current_balance,
+                              models.MemberShareAccount.member_id,
+                              models.MemberShareAccount.id,
+                              models.MemberShareAccount.association_member_id,
+                              models.ShareAccount.account_name,
+                              models.Members.firstname,
+                              models.Members.lastname) \
+        .select_from(models.Association) \
+        .join(models.AssociationMembers, models.AssociationMembers.association_id == models.Association.association_id) \
+        .join(models.MemberShareAccount,
+              models.MemberShareAccount.association_member_id == models.AssociationMembers.association_members_id) \
+        .join(models.ShareAccount, models.ShareAccount.id == models.MemberShareAccount.share_id) \
+        .join(models.Members, models.Members.member_id == models.MemberShareAccount.member_id) \
+        .filter(models.Association.association_id == association_id) \
+        .order_by(desc(models.AssociationMembers.association_members_id)) \
+        .all()
+
+    all_commodity_acc = db.query(models.MemberCommodityAccount.amt_valued,
+                                 models.MemberCommodityAccount.member_id,
+                                 models.MemberCommodityAccount.id,
+                                 models.MemberCommodityAccount.association_member_id,
+                                 models.CommodityAccount.warehouse,
+                                 models.Members.firstname,
+                                 models.Members.lastname) \
+        .select_from(models.Association) \
+        .join(models.AssociationMembers, models.AssociationMembers.association_id == models.Association.association_id) \
+        .join(models.MemberCommodityAccount,
+              models.MemberCommodityAccount.association_member_id == models.AssociationMembers.association_members_id) \
+        .join(models.CommodityAccount, models.CommodityAccount.id == models.MemberCommodityAccount.commodity_id) \
+        .join(models.Members, models.Members.member_id == models.MemberCommodityAccount.member_id) \
+        .filter(models.Association.association_id == association_id) \
+        .order_by(desc(models.AssociationMembers.association_members_id)) \
+        .all()
+
+    current_datetime = datetime.now()
+
+    start_of_day = current_datetime.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_day = current_datetime.replace(hour=23, minute=59, second=59, microsecond=999999)
+    # Savings
+    todays_savings_accounts_transactions = db.query(models.Members.firstname,
+                                                    models.MemberSavingsAccount.id,
+                                                    models.Members.lastname,
+                                                    models.Members.member_id,
+                                                    models.TransactionType.transactiontype_name,
+                                                    models.SavingsTransaction.amount,
+                                                    models.SavingsTransaction.transaction_date,
+                                                    models.SavingsTransaction.narration,
+                                                    models.Users.username) \
+        .select_from(models.Association) \
+        .join(models.AssociationMembers, models.AssociationMembers.association_id == models.Association.association_id) \
+        .join(models.MemberSavingsAccount,
+              models.MemberSavingsAccount.association_member_id == models.AssociationMembers.association_members_id) \
+        .join(models.SavingsAccount, models.SavingsAccount.id == models.MemberSavingsAccount.savings_id) \
+        .join(models.Members, models.Members.member_id == models.MemberSavingsAccount.member_id) \
+        .join(models.SavingsTransaction, models.SavingsTransaction.savings_acc_id == models.MemberSavingsAccount.id) \
+        .join(models.TransactionType,
+              models.SavingsTransaction.transactiontype_id == models.TransactionType.transactype_id) \
+        .join(models.Users, models.Users.id == models.SavingsTransaction.prep_by) \
+        .filter(models.Association.association_id == association_id,
+                models.SavingsTransaction.transaction_date >= start_of_day,
+                models.SavingsTransaction.transaction_date <= end_of_day
+                ) \
+        .order_by(desc(models.SavingsTransaction.transaction_id)) \
+        .all()
+
+    savings_accounts_transactions = db.query(models.Members.firstname,
+                                             models.MemberSavingsAccount.id,
+                                             models.Members.lastname,
+                                             models.Members.member_id,
+                                             models.TransactionType.transactiontype_name,
+                                             models.SavingsTransaction.amount,
+                                             models.SavingsTransaction.transaction_date,
+                                             models.SavingsTransaction.narration,
+                                             models.Users.username) \
+        .select_from(models.Association) \
+        .join(models.AssociationMembers, models.AssociationMembers.association_id == models.Association.association_id) \
+        .join(models.MemberSavingsAccount,
+              models.MemberSavingsAccount.association_member_id == models.AssociationMembers.association_members_id) \
+        .join(models.SavingsAccount, models.SavingsAccount.id == models.MemberSavingsAccount.savings_id) \
+        .join(models.Members, models.Members.member_id == models.MemberSavingsAccount.member_id) \
+        .join(models.SavingsTransaction, models.SavingsTransaction.savings_acc_id == models.MemberSavingsAccount.id) \
+        .join(models.TransactionType,
+              models.SavingsTransaction.transactiontype_id == models.TransactionType.transactype_id) \
+        .join(models.Users, models.Users.id == models.SavingsTransaction.prep_by) \
+        .filter(models.Association.association_id == association_id) \
+        .order_by(desc(models.SavingsTransaction.transaction_id)) \
+        .all()
+
+    # Loans
+    todays_loan_accounts_transactions = db.query(models.Members.firstname,
+                                                 models.MemberLoanAccount.id,
+                                                 models.Members.lastname,
+                                                 models.Members.member_id,
+                                                 models.TransactionType.transactiontype_name,
+                                                 models.LoansTransaction.amount,
+                                                 models.LoansTransaction.transaction_date,
+                                                 models.LoansTransaction.narration,
+                                                 models.Users.username) \
+        .select_from(models.Association) \
+        .join(models.AssociationMembers, models.AssociationMembers.association_id == models.Association.association_id) \
+        .join(models.MemberLoanAccount,
+              models.MemberLoanAccount.association_member_id == models.AssociationMembers.association_members_id) \
+        .join(models.LoanAccount, models.LoanAccount.id == models.MemberLoanAccount.loan_id) \
+        .join(models.Members, models.Members.member_id == models.MemberLoanAccount.member_id) \
+        .join(models.LoansTransaction, models.LoansTransaction.loans_acc_id == models.MemberLoanAccount.id) \
+        .join(models.TransactionType,
+              models.LoansTransaction.transactiontype_id == models.TransactionType.transactype_id) \
+        .join(models.Users, models.Users.id == models.LoansTransaction.prep_by) \
+        .filter(models.Association.association_id == association_id,
+                models.LoansTransaction.transaction_date >= start_of_day,
+                models.LoansTransaction.transaction_date <= end_of_day
+                ) \
+        .order_by(desc(models.LoansTransaction.transaction_id)) \
+        .all()
+
+    loan_accounts_transactions = db.query(models.Members.firstname,
+                                          models.MemberLoanAccount.id,
+                                          models.Members.lastname,
+                                          models.Members.member_id,
+                                          models.TransactionType.transactiontype_name,
+                                          models.LoansTransaction.amount,
+                                          models.LoansTransaction.transaction_date,
+                                          models.LoansTransaction.narration,
+                                          models.Users.username) \
+        .select_from(models.Association) \
+        .join(models.AssociationMembers, models.AssociationMembers.association_id == models.Association.association_id) \
+        .join(models.MemberLoanAccount,
+              models.MemberLoanAccount.association_member_id == models.AssociationMembers.association_members_id) \
+        .join(models.LoanAccount, models.LoanAccount.id == models.MemberLoanAccount.loan_id) \
+        .join(models.Members, models.Members.member_id == models.MemberLoanAccount.member_id) \
+        .join(models.LoansTransaction, models.LoansTransaction.loans_acc_id == models.MemberLoanAccount.id) \
+        .join(models.TransactionType,
+              models.LoansTransaction.transactiontype_id == models.TransactionType.transactype_id) \
+        .join(models.Users, models.Users.id == models.LoansTransaction.prep_by) \
+        .filter(models.Association.association_id == association_id) \
+        .order_by(desc(models.LoansTransaction.transaction_id)) \
+        .all()
+
+    # Shares
+    todays_share_accounts_transactions = db.query(models.Members.firstname,
+                                                  models.MemberShareAccount.id,
+                                                  models.Members.lastname,
+                                                  models.Members.member_id,
+                                                  models.TransactionType.transactiontype_name,
+                                                  models.SharesTransaction.amount,
+                                                  models.SharesTransaction.transaction_date,
+                                                  models.SharesTransaction.narration,
+                                                  models.Users.username) \
+        .select_from(models.Association) \
+        .join(models.AssociationMembers, models.AssociationMembers.association_id == models.Association.association_id) \
+        .join(models.MemberShareAccount,
+              models.MemberShareAccount.association_member_id == models.AssociationMembers.association_members_id) \
+        .join(models.ShareAccount, models.ShareAccount.id == models.MemberShareAccount.share_id) \
+        .join(models.Members, models.Members.member_id == models.MemberShareAccount.member_id) \
+        .join(models.SharesTransaction, models.SharesTransaction.shares_acc_id == models.MemberShareAccount.id) \
+        .join(models.TransactionType,
+              models.SharesTransaction.transactiontype_id == models.TransactionType.transactype_id) \
+        .join(models.Users, models.Users.id == models.SharesTransaction.prep_by) \
+        .filter(models.Association.association_id == association_id,
+                models.SharesTransaction.transaction_date >= start_of_day,
+                models.SharesTransaction.transaction_date <= end_of_day
+                ) \
+        .order_by(desc(models.SharesTransaction.transaction_id)) \
+        .all()
+
+    share_accounts_transactions = db.query(models.Members.firstname,
+                                           models.MemberShareAccount.id,
+                                           models.Members.lastname,
+                                           models.Members.member_id,
+                                           models.TransactionType.transactiontype_name,
+                                           models.SharesTransaction.amount,
+                                           models.SharesTransaction.transaction_date,
+                                           models.SharesTransaction.narration,
+                                           models.Users.username) \
+        .select_from(models.Association) \
+        .join(models.AssociationMembers, models.AssociationMembers.association_id == models.Association.association_id) \
+        .join(models.MemberShareAccount,
+              models.MemberShareAccount.association_member_id == models.AssociationMembers.association_members_id) \
+        .join(models.ShareAccount, models.ShareAccount.id == models.MemberShareAccount.share_id) \
+        .join(models.Members, models.Members.member_id == models.MemberShareAccount.member_id) \
+        .join(models.SharesTransaction, models.SharesTransaction.shares_acc_id == models.MemberShareAccount.id) \
+        .join(models.TransactionType,
+              models.SharesTransaction.transactiontype_id == models.TransactionType.transactype_id) \
+        .join(models.Users, models.Users.id == models.SharesTransaction.prep_by) \
+        .filter(models.Association.association_id == association_id) \
+        .order_by(desc(models.SharesTransaction.transaction_id)) \
+        .all()
+
+    return {"All_Savings_account": all_savings_acc, "All_Loans_account": all_loans_acc,
+            "All_Shares_acount": all_shares_acc, "All_Commodity_account": all_commodity_acc,
+            "Todays_Savings_Transactions": todays_savings_accounts_transactions,
+            "Savings_Transactions": savings_accounts_transactions,
+            "Todays_Loans_Transactions": todays_loan_accounts_transactions,
+            "Loans_Transactions": loan_accounts_transactions,
+            "Todays_Shares_Transactions": todays_share_accounts_transactions,
+            "Shares_Transactions": share_accounts_transactions,
+            }
+
+
+@router.get("/goto/form")
+async def get_all_associations_id_for_mass_deposit(user: dict = Depends(get_current_user),
+                                                   db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    all_associations = db.query(models.Association.association_id,
+                    models.Association.association_name,
+                    models.AssociationType.association_type).select_from(models.Association) \
+        .join(models.AssociationType,
+              models.AssociationType.associationtype_id == models.Association.association_type_id) \
+        .all()
+    return {"All_Associations": all_associations}
