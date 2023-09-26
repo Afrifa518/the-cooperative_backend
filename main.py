@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 import models
 from database import engine
-from routers import auth, users, associations, members, accounts, transactions
+from routers import auth, users, associations, members, accounts, transactions, commodities
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -21,3 +21,4 @@ app.include_router(associations.router)
 app.include_router(members.router)
 app.include_router(accounts.router)
 app.include_router(transactions.router)
+app.include_router(commodities.router)

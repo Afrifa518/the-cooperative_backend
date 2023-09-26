@@ -427,60 +427,60 @@ async def get_individual_member_accounts(member_id: int,
             "share_value": share_value
         })
 
-    commodity = []
-    all_commodity_accounts = (
-        db.query(
-            models.MemberCommodityAccount.id,
-            models.MemberCommodityAccount.amt_of_commodities,
-            models.MemberCommodityAccount.open_date,
-            models.MemberCommodityAccount.amt_valued,
-            models.CommodityAccount.warehouse,
-            models.CommodityAccount.value
-        )
-        .select_from(models.MemberCommodityAccount)
-        .join(models.CommodityAccount, models.MemberCommodityAccount.commodity_id == models.CommodityAccount.id)
-        .filter(models.MemberCommodityAccount.member_id == member_id)
-        .all()
-    )
-
-    for commodityrow in all_commodity_accounts:
-        (
-            id,
-            amt_of_commodities,
-            open_date,
-            amt_valued,
-            warehouse,
-            value,
-        ) = commodityrow
-        all_commodities = (
-            db.query(
-                models.CommodityAccount.id,
-                models.Commodities.commodities
-            ).select_from(models.CommodityAccount)
-            .join(models.Commodities, models.CommodityAccount.id == models.Commodities.commodity_acc_id)
-            .filter(models.CommodityAccount.id == commodityrow.id)
-            .all()
-        )
-        commodities_list = [
-            {
-                "Commodity_Names": c.commodities
-            } for c in all_commodities
-        ]
-        commodity.append({
-            "ID": id,
-            "Amt_of_Commodity": amt_of_commodities,
-            "open_date": open_date,
-            "Amount_value": amt_valued,
-            "Warehouse_name": warehouse,
-            "Overall_value": value,
-            "Commodity_Names": commodities_list,
-        })
+    # commodity = []
+    # all_commodity_accounts = (
+    #     db.query(
+    #         models.MemberCommodityAccount.id,
+    #         models.MemberCommodityAccount.amt_of_commodities,
+    #         models.MemberCommodityAccount.open_date,
+    #         models.MemberCommodityAccount.amt_valued,
+    #         models.CommodityAccount.warehouse,
+    #         models.CommodityAccount.value
+    #     )
+    #     .select_from(models.MemberCommodityAccount)
+    #     .join(models.CommodityAccount, models.MemberCommodityAccount.commodity_id == models.CommodityAccount.id)
+    #     .filter(models.MemberCommodityAccount.member_id == member_id)
+    #     .all()
+    # )
+    #
+    # for commodityrow in all_commodity_accounts:
+    #     (
+    #         id,
+    #         amt_of_commodities,
+    #         open_date,
+    #         amt_valued,
+    #         warehouse,
+    #         value,
+    #     ) = commodityrow
+    #     all_commodities = (
+    #         db.query(
+    #             models.CommodityAccount.id,
+    #             models.Commodities.commodities
+    #         ).select_from(models.CommodityAccount)
+    #         .join(models.Commodities, models.CommodityAccount.id == models.Commodities.commodity_acc_id)
+    #         .filter(models.CommodityAccount.id == commodityrow.id)
+    #         .all()
+    #     )
+    #     commodities_list = [
+    #         {
+    #             "Commodity_Names": c.commodities
+    #         } for c in all_commodities
+    #     ]
+    #     commodity.append({
+    #         "ID": id,
+    #         "Amt_of_Commodity": amt_of_commodities,
+    #         "open_date": open_date,
+    #         "Amount_value": amt_valued,
+    #         "Warehouse_name": warehouse,
+    #         "Overall_value": value,
+    #         "Commodity_Names": commodities_list,
+    #     })
 
     return {
         "Savings_acc": savings,
         "Loans_acc": loans,
         "Shares_acc": shares,
-        "Commodity_acc": commodity
+        # "Commodity_acc": commodity
     }
 
 
@@ -584,60 +584,60 @@ async def get_member_accounts(association_member_id: int,
             "share_value": share_value
         })
 
-    commodity = []
-    all_commodity_accounts = (
-        db.query(
-            models.MemberCommodityAccount.id,
-            models.MemberCommodityAccount.amt_of_commodities,
-            models.MemberCommodityAccount.open_date,
-            models.MemberCommodityAccount.amt_valued,
-            models.CommodityAccount.warehouse,
-            models.CommodityAccount.value
-        )
-        .select_from(models.MemberCommodityAccount)
-        .join(models.CommodityAccount, models.MemberCommodityAccount.commodity_id == models.CommodityAccount.id)
-        .filter(models.MemberCommodityAccount.association_member_id == association_member_id)
-        .all()
-    )
-
-    for commodityrow in all_commodity_accounts:
-        (
-            id,
-            amt_of_commodities,
-            open_date,
-            amt_valued,
-            warehouse,
-            value,
-        ) = commodityrow
-        all_commodities = (
-            db.query(
-                models.CommodityAccount.id,
-                models.Commodities.commodities
-            ).select_from(models.CommodityAccount)
-            .join(models.Commodities, models.CommodityAccount.id == models.Commodities.commodity_acc_id)
-            .filter(models.CommodityAccount.id == commodityrow.id)
-            .all()
-        )
-        commodities_list = [
-            {
-                "Commodity_Names": c.commodities
-            } for c in all_commodities
-        ]
-        commodity.append({
-            "ID": id,
-            "Amt_of_Commodity": amt_of_commodities,
-            "open_date": open_date,
-            "Amount_value": amt_valued,
-            "Warehouse_name": warehouse,
-            "Overall_value": value,
-            "Commodity_Names": commodities_list,
-        })
+    # commodity = []
+    # all_commodity_accounts = (
+    #     db.query(
+    #         models.MemberCommodityAccount.id,
+    #         models.MemberCommodityAccount.amt_of_commodities,
+    #         models.MemberCommodityAccount.open_date,
+    #         models.MemberCommodityAccount.amt_valued,
+    #         models.CommodityAccount.warehouse,
+    #         models.CommodityAccount.value
+    #     )
+    #     .select_from(models.MemberCommodityAccount)
+    #     .join(models.CommodityAccount, models.MemberCommodityAccount.commodity_id == models.CommodityAccount.id)
+    #     .filter(models.MemberCommodityAccount.association_member_id == association_member_id)
+    #     .all()
+    # )
+    #
+    # for commodityrow in all_commodity_accounts:
+    #     (
+    #         id,
+    #         amt_of_commodities,
+    #         open_date,
+    #         amt_valued,
+    #         warehouse,
+    #         value,
+    #     ) = commodityrow
+    #     all_commodities = (
+    #         db.query(
+    #             models.CommodityAccount.id,
+    #             models.Commodities.commodities
+    #         ).select_from(models.CommodityAccount)
+    #         .join(models.Commodities, models.CommodityAccount.id == models.Commodities.commodity_acc_id)
+    #         .filter(models.CommodityAccount.id == commodityrow.id)
+    #         .all()
+    #     )
+    #     commodities_list = [
+    #         {
+    #             "Commodity_Names": c.commodities
+    #         } for c in all_commodities
+    #     ]
+    #     commodity.append({
+    #         "ID": id,
+    #         "Amt_of_Commodity": amt_of_commodities,
+    #         "open_date": open_date,
+    #         "Amount_value": amt_valued,
+    #         "Warehouse_name": warehouse,
+    #         "Overall_value": value,
+    #         "Commodity_Names": commodities_list,
+    #     })
 
     return {
         "Savings_acc": savings,
         "Loans_acc": loans,
         "Shares_acc": shares,
-        "Commodity_acc": commodity
+        # "Commodity_acc": commodity
     }
 
 

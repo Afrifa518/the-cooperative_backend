@@ -420,7 +420,7 @@ async def mass_transaction_form(association_id: int,
         .join(models.SavingsAccount, models.MemberSavingsAccount.savings_id == models.SavingsAccount.id) \
         .all()
 
-    return members, info
+    return {"Members": members, "All_Accounts": info}
 
 
 class TransferSavings(BaseModel):
@@ -716,3 +716,6 @@ def insufficient_balance():
         headers={"WWW-Authenticate": "Bearer"},
     )
     return error_nkoa
+
+
+
