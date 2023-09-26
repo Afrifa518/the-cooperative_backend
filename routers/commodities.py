@@ -40,37 +40,35 @@ async def get_association_type_commodities(associationtype_id: int,
     if user is None:
         raise get_user_exception()
 
-    commodities = db.query(models.Commodities.commodity) \
-        .select_from(models.AssociationType) \
-        .join(models.AssociationTypeCommodities,
-              models.AssociationTypeCommodities.association_type_id == models.AssociationType.associationtype_id) \
-        .join(models.Commodities, models.Commodities.id == models.AssociationTypeCommodities.commodities_id) \
-        .filter(models.AssociationType.associationtype_id == associationtype_id) \
-        .all()
+    # commodities = db.query(models.Commodities.commodity) \
+    #     .select_from(models.AssociationType) \
+    #     .join(models.AssociationTypeCommodities,
+    #           models.AssociationTypeCommodities.association_type_id == models.AssociationType.associationtype_id) \
+    #     .join(models.Commodities, models.Commodities.id == models.AssociationTypeCommodities.commodities_id) \
+    #     .filter(models.AssociationType.associationtype_id == associationtype_id) \
+    #     .all()
+    #
+    # units = db.query(models.UnitsKg.unit_per_kg) \
+    #     .select_from(models.AssociationType) \
+    #     .join(models.AssociationTypeCommodities,
+    #           models.AssociationTypeCommodities.association_type_id == models.AssociationType.associationtype_id) \
+    #     .join(models.Commodities, models.Commodities.id == models.AssociationTypeCommodities.commodities_id) \
+    #     .join(models.CommodityUnitsJoin, models.Commodities.id == models.CommodityUnitsJoin.commodity_id) \
+    #     .join(models.UnitsKg, models.UnitsKg.id == models.CommodityUnitsJoin.unit_per_kg_id) \
+    #     .filter(models.AssociationType.associationtype_id == associationtype_id) \
+    #     .all()
+    # prices = db.query(models.CommodityGradeValues.grade,
+    #                   models.CommodityGradeValues.price_per_kg) \
+    #     .select_from(models.AssociationType) \
+    #     .join(models.AssociationTypeCommodities,
+    #           models.AssociationTypeCommodities.association_type_id == models.AssociationType.associationtype_id) \
+    #     .join(models.Commodities, models.Commodities.id == models.AssociationTypeCommodities.commodities_id) \
+    #     .join(models.CommodityUnitsJoin, models.Commodities.id == models.CommodityUnitsJoin.commodity_id) \
+    #     .join(models.CommodityGradeValues, models.CommodityGradeValues.commodities_id == models.Commodities.id) \
+    #     .filter(models.AssociationType.associationtype_id == associationtype_id) \
+    #     .all()
 
-    units = db.query(models.UnitsKg.unit_per_kg) \
-        .select_from(models.AssociationType) \
-        .join(models.AssociationTypeCommodities,
-              models.AssociationTypeCommodities.association_type_id == models.AssociationType.associationtype_id) \
-        .join(models.Commodities, models.Commodities.id == models.AssociationTypeCommodities.commodities_id) \
-        .join(models.CommodityUnitsJoin, models.Commodities.id == models.CommodityUnitsJoin.commodity_id) \
-        .join(models.UnitsKg, models.UnitsKg.id == models.CommodityUnitsJoin.unit_per_kg_id) \
-        .filter(models.AssociationType.associationtype_id == associationtype_id) \
-        .all()
-    prices = db.query(models.CommodityGradeValues.grade,
-                      models.CommodityGradeValues.price_per_kg) \
-        .select_from(models.AssociationType) \
-        .join(models.AssociationTypeCommodities,
-              models.AssociationTypeCommodities.association_type_id == models.AssociationType.associationtype_id) \
-        .join(models.Commodities, models.Commodities.id == models.AssociationTypeCommodities.commodities_id) \
-        .join(models.CommodityUnitsJoin, models.Commodities.id == models.CommodityUnitsJoin.commodity_id) \
-        .join(models.CommodityGradeValues, models.CommodityGradeValues.commodities_id == models.Commodities.id) \
-        .filter(models.AssociationType.associationtype_id == associationtype_id) \
-        .all()
-
-
-
-# all_dem = db.query(models.Commodities.commodity,
+    # all_dem = db.query(models.Commodities.commodity,
     #                    models.UnitsKg.unit_per_kg,
     #                    models.CommodityGradeValues.grade,
     #                    models.CommodityGradeValues.price_per_kg
@@ -84,7 +82,6 @@ async def get_association_type_commodities(associationtype_id: int,
     #     .join(models.CommodityGradeValues, models.CommodityGradeValues.commodities_id == models.Commodities.id) \
     #     .filter(models.AssociationType.associationtype_id == associationtype_id) \
     #     .all()
-
 
     # return {"Commodities": all_dem}
     # seen_dem = set()
@@ -124,11 +121,13 @@ async def get_association_type_commodities(associationtype_id: int,
         .join(models.CommodityUnitsJoin, models.Commodities.id == models.CommodityUnitsJoin.commodity_id)
         .join(models.UnitsKg, models.UnitsKg.id == models.CommodityUnitsJoin.unit_per_kg_id)
         .join(models.CommodityGradeValues, models.CommodityGradeValues.commodities_id == models.Commodities.id)
-        .join(models.AssociationTypeCommodities, models.AssociationTypeCommodities.commodities_id == models.Commodities.id)
-        .join(models.AssociationType, models.AssociationType.associationtype_id == models.AssociationTypeCommodities.association_type_id)
+        .join(models.AssociationTypeCommodities,
+              models.AssociationTypeCommodities.commodities_id == models.Commodities.id)
+        .join(models.AssociationType,
+              models.AssociationType.associationtype_id == models.AssociationTypeCommodities.association_type_id)
         .filter(models.AssociationType.associationtype_id == associationtype_id)
         .group_by(models.Commodities.commodity,
-                  models.Commodities.id,)
+                  models.Commodities.id, )
     )
 
     result = query.all()
@@ -142,7 +141,6 @@ async def get_association_type_commodities(associationtype_id: int,
         unique_grade[row.id].update(row.grade_list)
         unique_price_per_kg[row.id].update(row.price_per_kg_list)
 
-
     commodity_data = [
         {
             "Id": row.id,
@@ -153,9 +151,8 @@ async def get_association_type_commodities(associationtype_id: int,
         }
         for row in result
     ]
-
+    print(commodity_data)
     return {"Commodities": commodity_data}
-
 
 
 
@@ -236,5 +233,95 @@ async def create_new_commodity(data_nkoa: CommoditiesCreate,
 
     return "New Commodity Added"
 
-# @router.put("/setprice")
-# async def set_price_change()
+
+class SetNewPrice(BaseModel):
+    Id: int
+    grade: List[str]
+    price_per_kg: List[float]
+
+
+@router.put("/price/change")
+async def set_price_change(new: SetNewPrice,
+                           user: dict = Depends(get_current_user),
+                           db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    old = db.query(models.CommodityGradeValues) \
+        .filter(models.CommodityGradeValues.commodities_id == new.Id) \
+        .all()
+    if not old:
+        raise HTTPException(status_code=404, detail="Price not found")
+
+    changes = []
+
+    for i in range(len(old)):
+        if new.grade[i] != old[i].grade:
+            new.grade[i] = old[i].grade
+
+        grade = new.grade[i]
+        price = new.price_per_kg[i]
+
+        if old[i].grade != grade or old[i].price_per_kg != price:
+            changes.append({
+                "grade": grade,
+                "price_per_kg": price
+            })
+
+        old[i].grade = grade
+        old[i].price_per_kg = price
+
+        # db.add(old)
+        db.commit()
+        for change in changes:
+            units = db.query(models.UnitsKg.id) \
+                .select_from(models.CommodityUnitsJoin) \
+                .join(models.UnitsKg, models.UnitsKg.id == models.CommodityUnitsJoin.unit_per_kg_id) \
+                .filter(models.CommodityUnitsJoin.commodity_id == new.Id) \
+                .first()
+
+            store_track = models.CommodityValueTrack(
+                commodities_id=new.Id,
+                date=datetime.now(),
+                new_price_per_kg=change["price_per_kg"],
+                grade=change["grade"],
+                new_units_per_kg=units.id
+            )
+            db.add(store_track)
+            db.commit()
+
+    return "Price updated successfully"
+
+
+@router.get("/prices/track")
+async def get_price_traking_table(user: dict = Depends(get_current_user),
+                                  db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    result = db.query(models.Commodities.commodity,
+                      models.CommodityValueTrack.id,
+                      models.CommodityValueTrack.date,
+                      models.CommodityValueTrack.new_price_per_kg,
+                      models.CommodityValueTrack.grade) \
+        .select_from(models.CommodityValueTrack) \
+        .join(models.Commodities, models.Commodities.id == models.CommodityValueTrack.commodities_id) \
+        .order_by(desc(models.CommodityValueTrack.id)) \
+        .all()
+
+    unique_tracks = defaultdict(list)
+
+    for row in result:
+        row_identifier = (
+            row.commodity,
+            row.date,
+            row.grade,
+            row.new_price_per_kg
+        )
+
+        if row_identifier not in unique_tracks:
+            unique_tracks[row_identifier] = row
+
+    filtered_tracks = list(unique_tracks.values())
+
+    return {"Tracks": filtered_tracks}
