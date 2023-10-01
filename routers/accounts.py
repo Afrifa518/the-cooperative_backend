@@ -57,10 +57,9 @@ class ShareAccount(BaseModel):
 
 class CommodityAccount(BaseModel):
     warehouse: str
-    calc_means: str
-    commodities: Optional[List[str]] = None,
-    value: float
+    commodities: Optional[List[int]] = None,
     community: str
+    association_type_id: int
 
 
 @router.post("/savings")
@@ -234,20 +233,36 @@ async def create_commodity(commodity: CommodityAccount,
         raise get_user_exception()
     commodity_model = models.CommodityAccount()
     commodity_model.warehouse = commodity.warehouse
-    commodity_model.calc_means = commodity.calc_means
-    commodity_model.value = commodity.value
     commodity_model.community = commodity.community
+    commodity_model.association_type_id = commodity.association_type_id
 
     db.add(commodity_model)
     db.flush()
     db.commit()
-
     add_commodities(commodities=commodity.commodities, db=db)
 
-    return "Setup Complete"
+    return "Warehouse Added"
 
 
-def add_commodities(commodities: Optional[List[str]] = None,
+@router.get("/commodities/{association_type_id}")
+async def get_all_commodities_in_cluster(association_type_id: int,
+                                         user: dict = Depends(get_current_user),
+                                         db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    commodi = db.query(models.Commodities.id,
+                       models.Commodities.commodity) \
+        .select_from(models.AssociationTypeCommodities) \
+        .join(models.Commodities, models.Commodities.id == models.AssociationTypeCommodities.commodities_id) \
+        .join(models.AssociationType,
+              models.AssociationTypeCommodities.association_type_id == models.AssociationType.associationtype_id) \
+        .filter(models.AssociationType.associationtype_id == association_type_id) \
+        .all()
+    return {"All_Commodities": commodi}
+
+
+def add_commodities(commodities: Optional[List[int]] = None,
                     db: Session = Depends(get_db)):
     commodity_account = db.query(models.CommodityAccount) \
         .order_by(desc(models.CommodityAccount.id)) \
@@ -256,22 +271,15 @@ def add_commodities(commodities: Optional[List[str]] = None,
     if not commodity_account:
         raise HTTPException(status_code=404, detail="Commodity account not found")
 
-    try:
-        if commodities:
-            commodity_models = []
-            for commodity in commodities:
-                commo_model = models.Commodities(
-                    commodity_acc_id=commodity_account.id,
-                    commodities=commodity
-                )
-                commodity_models.append(commo_model)
-            db.bulk_save_objects(commodity_models)
-            db.commit()
-    except IntegrityError as e:
-        db.rollback()
-        raise HTTPException(status_code=400, detail="Commodity creation failed")
+    for commodity in commodities:
+        commo_model = models.CommodityAccountCommodities(
+            commodities_id=commodity,
+            commodity_account_id=commodity_account.id
+        )
+        db.add(commo_model)
+        db.commit()
 
-    return "Success"
+    return "Successfully Created"
 
 
 class MemberCommodity(BaseModel):
@@ -290,8 +298,7 @@ async def create_member_commodity_account(acc: MemberCommodity,
     member_account = models.MemberCommodityAccount()
     member_account.commodity_id = acc.commodity_id
     member_account.open_date = datetime.now()
-    member_account.amt_of_commodities = 0
-    member_account.amt_valued = 0.00
+    member_account.cash_value = 0.00
     member_account.association_member_id = acc.association_member_id
     member_account.member_id = acc.member_id
 
@@ -301,30 +308,49 @@ async def create_member_commodity_account(acc: MemberCommodity,
     return "New Account Activated"
 
 
-@router.get("/commodity/")
-async def get_commodities(user: dict = Depends(get_current_user),
+@router.get("/commodity/{association_type_id}/")
+async def get_commodities(association_type_id: int,
+                          user: dict = Depends(get_current_user),
                           db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
-    all_commodities = db.query(
-        models.CommodityAccount.id.label('account_id'),
-        func.count(models.Commodities.id).label('commodity_count'),
-        models.CommodityAccount.warehouse,
-        models.CommodityAccount.value,
-        models.CommodityAccount.community,
-        models.CommodityAccount.calc_means
-    ).outerjoin(
-        models.Commodities,
-        models.CommodityAccount.id == models.Commodities.commodity_acc_id,
-    ).group_by(
-        models.CommodityAccount.id,
-        models.CommodityAccount.warehouse,
-        models.CommodityAccount.calc_means,
-        models.CommodityAccount.value,
-        models.CommodityAccount.community,
-    ).all()
 
-    return all_commodities
+    warehouses = db.query(models.CommodityAccount.warehouse,
+                          models.CommodityAccount.id,
+                          models.CommodityAccount.association_type_id) \
+        .select_from(models.CommodityAccount) \
+        .filter(models.CommodityAccount.association_type_id == association_type_id) \
+        .all()
+
+    return {"Warehouse": warehouses}
+
+
+@router.get("/commodity/account/info/{association_type_id}")
+async def get_warehouse_infomation(association_type_id: int,
+                                   user: dict = Depends(get_current_user),
+                                   db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    basic_info = db.query(models.CommodityAccount.warehouse,
+                          models.CommodityAccount.community,
+                          ) \
+        .select_from(models.CommodityAccount) \
+        .filter(models.CommodityAccount.association_type_id == association_type_id) \
+        .first()
+
+    related_commodities = db.query(models.Commodities) \
+        .select_from(models.CommodityAccount) \
+        .join(models.CommodityAccountCommodities,
+              models.CommodityAccountCommodities.commodity_account_id == models.CommodityAccount.id) \
+        .join(models.Commodities,
+              models.CommodityAccountCommodities.commodities_id == models.Commodities.id) \
+        .filter(models.CommodityAccount.association_type_id == association_type_id) \
+        .all()
+    # print({"Basic_Info": basic_info, "Related Commodities": related_commodities})
+
+    return {"Basic_Info": basic_info, "Related_Commodities": related_commodities}
+
 
 
 @router.get("/account/{member_id}")

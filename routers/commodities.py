@@ -68,8 +68,9 @@ async def get_association_type_commodities(associationtype_id: int,
     #     .filter(models.AssociationType.associationtype_id == associationtype_id) \
     #     .all()
 
-    # all_dem = db.query(models.Commodities.commodity,
-    #                    models.UnitsKg.unit_per_kg,
+    # all_dem = db.query(models.Commodities.id,
+    #                    models.Commodities.commodity,
+    #                    func.array_agg(models.UnitsKg.unit_per_kg).label('unit_per_kg_list'),
     #                    models.CommodityGradeValues.grade,
     #                    models.CommodityGradeValues.price_per_kg
     #                    ) \
@@ -81,34 +82,37 @@ async def get_association_type_commodities(associationtype_id: int,
     #     .join(models.UnitsKg, models.UnitsKg.id == models.CommodityUnitsJoin.unit_per_kg_id) \
     #     .join(models.CommodityGradeValues, models.CommodityGradeValues.commodities_id == models.Commodities.id) \
     #     .filter(models.AssociationType.associationtype_id == associationtype_id) \
+    #     .order_by(desc(models.Commodities.id)) \
     #     .all()
-
+    # .group_by(
+    #     models.Commodities.id,
+    #     models.Commodities.commodity,
+    #     models.CommodityGradeValues.grade,
+    #     models.CommodityGradeValues.price_per_kg
+    # ) \
+    #         unique_tracks = defaultdict(list)
+    #
+    # for row in all_dem:
+    #     row_identifier = (
+    #         # row.id,
+    #         row.commodity,
+    #         # row.unit_per_kg_list,
+    #         # row.grade,
+    #         row.price_per_kg
+    #     )
+    #
+    #     if row_identifier not in unique_tracks:
+    #         unique_tracks[row_identifier] = row
+    #
+    # filtered_tracks = list(unique_tracks.values())
+    # print(all_dem)
     # return {"Commodities": all_dem}
-    # seen_dem = set()
-    # all_of_data = []
-    #
-    # for como_data in all_dem:
-    #     (
-    #         commodity,
-    #         unit_per_kg,
-    #         grade,
-    #         price_per_kg
-    #     ) = como_data
-    #
-    #     if commodity not in seen_dem:
-    #         seen_dem.add(commodity)
-    #         all_of_data.append({
-    #             "commodity": commodity,
-    #             "unit_per_kg": unit_per_kg,
-    #             "grade": grade,
-    #             "price_per_kg": price_per_kg
-    #         })
-
     # Commodities = aliased(Commodities)
     # UnitsKg = aliased(UnitsKg)
     # CommodityGradeValues = aliased(CommodityGradeValues)
 
     # Build the query
+
     query = (
         db.query(
             models.Commodities.commodity,
@@ -151,7 +155,7 @@ async def get_association_type_commodities(associationtype_id: int,
         }
         for row in result
     ]
-    print(commodity_data)
+    # print(commodity_data)
     return {"Commodities": commodity_data}
 
 
@@ -203,11 +207,12 @@ async def create_new_commodity(data_nkoa: CommoditiesCreate,
         price = data_nkoa.price_per_kg[i]
 
         grade_value = models.CommodityGradeValues(
-            grade=grade,
+            commodities_id=commodity_id.id,
             price_per_kg=price,
-            commodities_id=commodity_id.id
+            grade=grade
         )
         db.add(grade_value)
+        db.flush()
         db.commit()
         units = db.query(models.UnitsKg.id) \
             .select_from(models.CommodityUnitsJoin) \

@@ -121,12 +121,12 @@ class Commodities(Base):
     commodity = Column(String)
 
     tracked = relationship("CommodityValueTrack", back_populates="tracker")
-    dities = relationship("CommodityAccount", back_populates="commo")
     thingsthe = relationship("CommodityTransactions", back_populates="thethings")
-    ankasa_com = relationship("MemberCommoditiesAccCommodities", back_populates="com_ankasa")
+    ankasa_com = relationship("MemberCommodityAccCommodities", back_populates="com_ankasa")
     type_commodity = relationship("AssociationTypeCommodities", back_populates="commodity_type")
     redarg = relationship("CommodityGradeValues", back_populates="grader")
     ytidommoc = relationship("CommodityUnitsJoin", back_populates="commodity")
+    commod = relationship("CommodityAccountCommodities", back_populates="accommo")
 
 class UnitsKg(Base):
     __tablename__ = "units/kg"
@@ -135,6 +135,7 @@ class UnitsKg(Base):
     unit_per_kg = Column("units/kg", Integer)
 
     trillion_per_unit = relationship("CommodityUnitsJoin", back_populates="unit_per_trillion")
+    tinu = relationship("MemberCommodityAccCommodities", back_populates="unit")
 
 class CommodityUnitsJoin(Base):
     __tablename__ = "commodity_units_join"
@@ -149,7 +150,7 @@ class CommodityUnitsJoin(Base):
 class CommodityGradeValues(Base):
     __tablename__ = "commodity_grade_values"
 
-    Id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True)
     grade = Column(String)
     price_per_kg = Column("price/kg", FLOAT)
     commodities_id = Column(Integer, ForeignKey("commodities.id"))
@@ -162,14 +163,22 @@ class CommodityAccount(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     warehouse = Column(String)
-    calc_means = Column(String)
-    commodities_id = Column(Integer, ForeignKey("commodities.id"))
     community = Column(String)
+    association_type_id = Column(Integer, ForeignKey("associationtype.associationtype_id"))
 
-    commo = relationship("Commodities", back_populates="dities")
+    assohouse = relationship("AssociationType", back_populates="watertank")
     member_commodity = relationship("MemberCommodityAccount", back_populates="commodity")
+    tnuota = relationship("CommodityAccountCommodities", back_populates="account")
 
+class CommodityAccountCommodities(Base):
+    __tablename__ = "commodity_account_commodities"
 
+    account_commodities_id = Column(Integer, primary_key=True, index=True)
+    commodity_account_id = Column(Integer, ForeignKey("commodity_account.id"))
+    commodities_id = Column(Integer, ForeignKey("commodities.id"))
+
+    account = relationship("CommodityAccount", back_populates="tnuota")
+    accommo = relationship("Commodities", back_populates="commod")
 
 class CommodityValueTrack(Base):
     __tablename__ = 'commodity_value_track'
@@ -236,28 +245,32 @@ class MemberCommodityAccount(Base):
     __tablename__ = "member_commodity_acc"
 
     id = Column(Integer, primary_key=True, index=True)
-    commodity_id = Column(Integer, ForeignKey("commodity_account.id"))
     open_date = Column(TIMESTAMP)
-    amt_of_commodities = Column(Integer)
-    amt_valued = Column(FLOAT)
+    cash_value = Column(FLOAT)
     association_member_id = Column(Integer, ForeignKey("associationmembers.association_members_id"), nullable=True)
     member_id = Column(Integer, ForeignKey("members.member_id"))
+    commodity_id = Column(Integer, ForeignKey("commodity_account.id"))
 
     commodity = relationship("CommodityAccount", back_populates="member_commodity")
     membersown = relationship("Members", back_populates="member_member")
     passbook = relationship("AssociationMembers", back_populates="passing")
     nso_account = relationship("CommodityTransactions", back_populates="account_nso")
-    things_acc = relationship("MemberCommoditiesAccCommodities", back_populates="acc_things")
+    things_acc = relationship("MemberCommodityAccCommodities", back_populates="acc_things")
 
-class MemberCommoditiesAccCommodities(Base):
-    __tablename__ = "member_commodities_acc(commodities)"
+class MemberCommodityAccCommodities(Base):
+    __tablename__ = "member_commodity_acc_commodities"
 
-    member_commodities_id = Column(Integer, primary_key=True, index=True)
-    member_commodity_acc_id = Column(Integer, ForeignKey("member_commodity_acc.id"))
+    member_commodity_acc_commodities_id = Column(Integer, primary_key=True, index=True)
+    member_acc_id = Column(Integer, ForeignKey("member_commodity_acc.id"))
     commodities_id = Column(Integer, ForeignKey("commodities.id"))
+    units_id = Column(Integer, ForeignKey("units/kg.id"))
+    total_number = Column(Integer)
+    commodity_cash_value = Column(FLOAT)
 
     acc_things = relationship("MemberCommodityAccount", back_populates="things_acc")
     com_ankasa = relationship("Commodities", back_populates="ankasa_com")
+    unit = relationship("UnitsKg", back_populates="tinu")
+
 
 
 
@@ -271,6 +284,9 @@ class AssociationType(Base):
 
     asso = relationship("Association", back_populates="assotype")
     commodities_type = relationship("AssociationTypeCommodities", back_populates="type_commodities")
+    watertank = relationship("CommodityAccount", back_populates="assohouse")
+
+
 class AssociationTypeCommodities(Base):
     __tablename__ = "association_type_commodities"
 
@@ -301,6 +317,7 @@ class Association(Base):
     members = relationship("AssociationMembers", back_populates="memasso")
     assotype = relationship("AssociationType", back_populates="asso")
     leader = relationship("AssociationLeaders", back_populates="associa")
+
 
 
 class AssociationLeaders(Base):
