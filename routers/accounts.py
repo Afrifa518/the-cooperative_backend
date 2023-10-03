@@ -60,6 +60,12 @@ class CommodityAccount(BaseModel):
     commodities: Optional[List[int]] = None,
     community: str
     association_type_id: int
+    rebagging_fee: float
+    treatment_fee: float
+    destoning_fee: float
+    cleaning_fee: float
+    storage_fee: float
+    tax_fee: float
 
 
 @router.post("/savings")
@@ -235,6 +241,12 @@ async def create_commodity(commodity: CommodityAccount,
     commodity_model.warehouse = commodity.warehouse
     commodity_model.community = commodity.community
     commodity_model.association_type_id = commodity.association_type_id
+    commodity_model.rebagging_fee = commodity.rebagging_fee
+    commodity_model.treatment_fee = commodity.treatment_fee
+    commodity_model.destoning_fee = commodity.destoning_fee
+    commodity_model.cleaning_fee = commodity.cleaning_fee
+    commodity_model.storage_fee = commodity.storage_fee
+    commodity_model.tax_fee = commodity.tax_fee
 
     db.add(commodity_model)
     db.flush()
@@ -302,10 +314,68 @@ async def create_member_commodity_account(acc: MemberCommodity,
     member_account.association_member_id = acc.association_member_id
     member_account.member_id = acc.member_id
 
+
     db.add(member_account)
     db.commit()
 
     return "New Account Activated"
+
+
+class StoreCommodities(BaseModel):
+    member_acc_id: int
+    commodity_id: int
+    grade: str
+    units_id: int
+    total_number: int
+    rebagging_fee: bool
+    treatment_fee: bool
+    destoning_fee: bool
+    cleaning_fee: bool
+    storage_fee: bool
+    tax_fee: bool
+
+@router.post("/store/commodity")
+async def store_commodity(storage: StoreCommodities,
+                          user: dict = Depends(get_current_user),
+                          db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    charges = db.query(models.CommodityAccount) \
+        .select_from(models.MemberCommodityAccount) \
+        .join(models.CommodityAccount,
+              models.CommodityAccount.id == models.MemberCommodityAccount.commodity_id) \
+        .filter(models.MemberCommodityAccount.id == storage.member_acc_id) \
+        .first()
+
+    price = db.query(models.CommodityGradeValues) \
+        .select_from(models.Commodities) \
+        .join(models.CommodityGradeValues,
+              models.Commodities.id == models.CommodityGradeValues.commodities_id) \
+        .filter(models.Commodities.id == storage.commodity_id,
+                models.CommodityGradeValues.grade == storage.grade) \
+        .first()
+    unit = db.query(models.UnitsKg) \
+        .select_from(models.UnitsKg) \
+        .filter(models.UnitsKg.id == storage.units_id) \
+        .first()
+
+    weight = unit.unit_per_kg * storage.total_number
+    tons = weight/1000
+
+    cash_value = 0
+    # add handling fee
+
+    modell = models.MemberCommodityAccCommodities(
+        member_acc_id=storage.member_acc_id,
+        commodities_id=storage.commodity_id,
+        units_id=storage.units_id,
+        total_number=storage.total_number,
+        commodity_cash_value=cash_value,
+        weight=weight,
+        tons=tons
+    )
+
 
 
 @router.get("/commodity/{association_type_id}/")
@@ -325,6 +395,22 @@ async def get_commodities(association_type_id: int,
     return {"Warehouse": warehouses}
 
 
+@router.get("/commodityty/all")
+async def get_all_commodities_account(user: dict = Depends(get_current_user),
+                                      db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    warehouse = db.query(models.CommodityAccount.warehouse,
+                         models.CommodityAccount.id,
+                         models.CommodityAccount.community,
+                         models.CommodityAccount.association_type_id) \
+        .select_from(models.CommodityAccount) \
+        .all()
+
+    return {"Warehouse": warehouse}
+
+
 @router.get("/commodity/account/info/{association_type_id}")
 async def get_warehouse_infomation(association_type_id: int,
                                    user: dict = Depends(get_current_user),
@@ -333,6 +419,12 @@ async def get_warehouse_infomation(association_type_id: int,
         raise get_user_exception()
 
     basic_info = db.query(models.CommodityAccount.warehouse,
+                          models.CommodityAccount.tax_fee,
+                          models.CommodityAccount.storage_fee,
+                          models.CommodityAccount.cleaning_fee,
+                          models.CommodityAccount.destoning_fee,
+                          models.CommodityAccount.treatment_fee,
+                          models.CommodityAccount.rebagging_fee,
                           models.CommodityAccount.community,
                           ) \
         .select_from(models.CommodityAccount) \
@@ -350,7 +442,6 @@ async def get_warehouse_infomation(association_type_id: int,
     # print({"Basic_Info": basic_info, "Related Commodities": related_commodities})
 
     return {"Basic_Info": basic_info, "Related_Commodities": related_commodities}
-
 
 
 @router.get("/account/{member_id}")
@@ -453,60 +544,40 @@ async def get_individual_member_accounts(member_id: int,
             "share_value": share_value
         })
 
-    # commodity = []
-    # all_commodity_accounts = (
-    #     db.query(
-    #         models.MemberCommodityAccount.id,
-    #         models.MemberCommodityAccount.amt_of_commodities,
-    #         models.MemberCommodityAccount.open_date,
-    #         models.MemberCommodityAccount.amt_valued,
-    #         models.CommodityAccount.warehouse,
-    #         models.CommodityAccount.value
-    #     )
-    #     .select_from(models.MemberCommodityAccount)
-    #     .join(models.CommodityAccount, models.MemberCommodityAccount.commodity_id == models.CommodityAccount.id)
-    #     .filter(models.MemberCommodityAccount.member_id == member_id)
-    #     .all()
-    # )
-    #
-    # for commodityrow in all_commodity_accounts:
-    #     (
-    #         id,
-    #         amt_of_commodities,
-    #         open_date,
-    #         amt_valued,
-    #         warehouse,
-    #         value,
-    #     ) = commodityrow
-    #     all_commodities = (
-    #         db.query(
-    #             models.CommodityAccount.id,
-    #             models.Commodities.commodities
-    #         ).select_from(models.CommodityAccount)
-    #         .join(models.Commodities, models.CommodityAccount.id == models.Commodities.commodity_acc_id)
-    #         .filter(models.CommodityAccount.id == commodityrow.id)
-    #         .all()
-    #     )
-    #     commodities_list = [
-    #         {
-    #             "Commodity_Names": c.commodities
-    #         } for c in all_commodities
-    #     ]
-    #     commodity.append({
-    #         "ID": id,
-    #         "Amt_of_Commodity": amt_of_commodities,
-    #         "open_date": open_date,
-    #         "Amount_value": amt_valued,
-    #         "Warehouse_name": warehouse,
-    #         "Overall_value": value,
-    #         "Commodity_Names": commodities_list,
-    #     })
+    commodity = []
+    all_commodity_accounts = (
+        db.query(
+            models.MemberCommodityAccount.id,
+            models.MemberCommodityAccount.open_date,
+            models.MemberCommodityAccount.cash_value,
+            models.CommodityAccount.warehouse,
+        )
+        .select_from(models.MemberCommodityAccount)
+        .join(models.CommodityAccount, models.MemberCommodityAccount.commodity_id == models.CommodityAccount.id)
+        .filter(models.MemberCommodityAccount.member_id == member_id)
+        .all()
+    )
+
+    for commodityrow in all_commodity_accounts:
+        (
+            id,
+            open_date,
+            cash_value,
+            warehouse,
+        ) = commodityrow
+
+        commodity.append({
+            "ID": id,
+            "open_date": open_date,
+            "Amount_value": cash_value,
+            "Warehouse_name": warehouse,
+        })
 
     return {
         "Savings_acc": savings,
         "Loans_acc": loans,
         "Shares_acc": shares,
-        # "Commodity_acc": commodity
+        "Commodity_acc": commodity
     }
 
 
@@ -610,60 +681,40 @@ async def get_member_accounts(association_member_id: int,
             "share_value": share_value
         })
 
-    # commodity = []
-    # all_commodity_accounts = (
-    #     db.query(
-    #         models.MemberCommodityAccount.id,
-    #         models.MemberCommodityAccount.amt_of_commodities,
-    #         models.MemberCommodityAccount.open_date,
-    #         models.MemberCommodityAccount.amt_valued,
-    #         models.CommodityAccount.warehouse,
-    #         models.CommodityAccount.value
-    #     )
-    #     .select_from(models.MemberCommodityAccount)
-    #     .join(models.CommodityAccount, models.MemberCommodityAccount.commodity_id == models.CommodityAccount.id)
-    #     .filter(models.MemberCommodityAccount.association_member_id == association_member_id)
-    #     .all()
-    # )
-    #
-    # for commodityrow in all_commodity_accounts:
-    #     (
-    #         id,
-    #         amt_of_commodities,
-    #         open_date,
-    #         amt_valued,
-    #         warehouse,
-    #         value,
-    #     ) = commodityrow
-    #     all_commodities = (
-    #         db.query(
-    #             models.CommodityAccount.id,
-    #             models.Commodities.commodities
-    #         ).select_from(models.CommodityAccount)
-    #         .join(models.Commodities, models.CommodityAccount.id == models.Commodities.commodity_acc_id)
-    #         .filter(models.CommodityAccount.id == commodityrow.id)
-    #         .all()
-    #     )
-    #     commodities_list = [
-    #         {
-    #             "Commodity_Names": c.commodities
-    #         } for c in all_commodities
-    #     ]
-    #     commodity.append({
-    #         "ID": id,
-    #         "Amt_of_Commodity": amt_of_commodities,
-    #         "open_date": open_date,
-    #         "Amount_value": amt_valued,
-    #         "Warehouse_name": warehouse,
-    #         "Overall_value": value,
-    #         "Commodity_Names": commodities_list,
-    #     })
+    commodity = []
+    all_commodity_accounts = (
+        db.query(
+            models.MemberCommodityAccount.id,
+            models.MemberCommodityAccount.open_date,
+            models.MemberCommodityAccount.cash_value,
+            models.CommodityAccount.warehouse,
+        )
+        .select_from(models.MemberCommodityAccount)
+        .join(models.CommodityAccount, models.MemberCommodityAccount.commodity_id == models.CommodityAccount.id)
+        .filter(models.MemberCommodityAccount.association_member_id == association_member_id)
+        .all()
+    )
+
+    for commodityrow in all_commodity_accounts:
+        (
+            id,
+            open_date,
+            cash_value,
+            warehouse,
+        ) = commodityrow
+
+        commodity.append({
+            "ID": id,
+            "open_date": open_date,
+            "Amount_value": cash_value,
+            "Warehouse_name": warehouse,
+        })
 
     return {
         "Savings_acc": savings,
         "Loans_acc": loans,
         "Shares_acc": shares,
-        # "Commodity_acc": commodity
+        "Commodity_acc": commodity
     }
 
 
@@ -712,7 +763,9 @@ async def get_loan_info(loans_account_id: int,
             models.MemberLoanAccount.current_balance,
             models.LoanAccount.min_amt,
             models.LoanAccount.max_amt
-        ).filter(models.MemberLoanAccount.id == loans_account_id).first()
+        ).select_from(models.MemberLoanAccount)
+        .join(models.LoanAccount, models.LoanAccount.id == models.MemberLoanAccount.loan_id)
+        .filter(models.MemberLoanAccount.id == loans_account_id).first()
     )
     timestamp = f"{data_nkoa.open_date}"
     datetime_obj = datetime.fromisoformat(timestamp)
@@ -765,9 +818,9 @@ async def get_loan_info(share_account_id: int,
 
 
 @router.get("/commodity/{commodity_account_id}")
-async def get_loan_info(commodity_account_id: int,
-                        user: dict = Depends(get_current_user),
-                        db: Session = Depends(get_db)):
+async def get_commodity_info(commodity_account_id: int,
+                             user: dict = Depends(get_current_user),
+                             db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
 
@@ -775,8 +828,7 @@ async def get_loan_info(commodity_account_id: int,
         db.query(
             models.MemberCommodityAccount.id,
             models.MemberCommodityAccount.open_date,
-            models.MemberCommodityAccount.amt_of_commodities,
-            models.MemberCommodityAccount.amt_valued,
+            models.MemberCommodityAccount.cash_value,
         ).filter(models.MemberCommodityAccount.id == commodity_account_id).first()
     )
     timestamp = f"{data_nkoa.open_date}"
@@ -786,8 +838,7 @@ async def get_loan_info(commodity_account_id: int,
         {
             "id": data_nkoa.id,
             "open_date": formatted_date,
-            "amount_of_commodities": data_nkoa.amt_of_commodities,
-            "amount_valued": data_nkoa.amt_valued
+            "amount_valued": data_nkoa.cash_value
         }
     ]
 

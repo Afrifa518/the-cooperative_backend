@@ -5,7 +5,7 @@ from sqlalchemy import desc, func
 sys.path.append("../..")
 
 from typing import Optional, List
-from fastapi import Depends, HTTPException, APIRouter, status
+from fastapi import Depends, HTTPException, APIRouter, status, Form
 import models
 from database import engine, SessionLocal
 from sqlalchemy.orm import Session
@@ -58,6 +58,10 @@ class SharesTransaction(BaseModel):
     Amount: float
     narration: Optional[str]
     shares_acc_id: int
+    starting_date: str
+    ending_date: str
+    on_due_date: str
+    spending_means: str
 
 
 # Savings
@@ -212,8 +216,8 @@ async def create_transactions_loans_request_acc(transactLoan: LoansTransaction,
         return "Transaction Complete"
 
 
-@router.patch("/approve/loan/{transaction_id}")
-async def approve_loan(transaction_id: int,
+@router.patch("/approve/loan")
+async def approve_loan(transaction_id: int = Form(...),
                        user: dict = Depends(get_current_user),
                        db: Session = Depends(get_db)):
     if user is None:
@@ -235,20 +239,112 @@ async def approve_loan(transaction_id: int,
     return "Loan Approved"
 
 
-@router.patch("/disburse/loan/{transaction_id}")
-async def disburse_loan(transaction_id: int,
+@router.patch("/disburse/loan")
+async def disburse_loan(transaction_id: int = Form(...),
+                        repayment_starts: str = Form(...),
+                        repayment_ends: str = Form(...),
                         user: dict = Depends(get_current_user),
                         db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
 
+    update_data = {
+        models.LoansTransaction.status: 'Disbursed',
+        models.LoansTransaction.repayment_starts: repayment_starts,
+        models.LoansTransaction.repayment_ends: repayment_ends
+    }
+
     updated_transaction = db.query(models.LoansTransaction) \
         .filter(models.LoansTransaction.transaction_id == transaction_id) \
-        .update({models.LoansTransaction.status: 'Disbursed'})
+        .update(update_data)
+
+    transaction = db.query(models.LoansTransaction) \
+        .filter(models.LoansTransaction.transaction_id == transaction_id) \
+        .first()
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    coorp = db.query(models.MemberSavingsAccount) \
+        .select_from(models.MemberLoanAccount) \
+        .join(models.Members,
+              models.Members.member_id == models.MemberLoanAccount.member_id) \
+        .join(models.MemberSavingsAccount,
+              models.MemberSavingsAccount.member_id == models.Members.member_id) \
+        .filter(models.MemberLoanAccount.id == transaction.loans_acc_id,
+                models.MemberSavingsAccount.savings_id == 2) \
+        .first()
+
+    balance_account = db.query(models.MemberLoanAccount) \
+        .filter(models.MemberLoanAccount.id == transaction.loans_acc_id) \
+        .first()
+
+    app_pro_fee = db.query(models.LoanAccount) \
+        .join(models.MemberLoanAccount,
+              models.MemberLoanAccount.loan_id == models.LoanAccount.id) \
+        .filter(models.MemberLoanAccount.id == transaction.loans_acc_id) \
+        .first()
+    current_datetime = datetime.now()
+    formatted_date = current_datetime.strftime('%Y-%m-%d')
+
+    charges = models.SavingsTransaction()
+    charges.transactiontype_id = 2
+    charges.amount = (app_pro_fee.application_fee) + (app_pro_fee.proccessing_fee)
+    charges.prep_by = user.get("id")
+    charges.narration = f"Debit for Application fee + Processing fee for disbursed on {formatted_date}"
+    charges.transaction_date = datetime.now()
+    charges.savings_acc_id = coorp.id
+
+    db.add(charges)
+    db.flush()
+    db.commit()
+
+    if not balance_account:
+        raise HTTPException(status_code=404, detail="Balance account not found")
+
+    balance_account.current_balance = (-transaction.amount)
+
+    db.commit()
 
     if not updated_transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
+    start_date = datetime.strptime(repayment_starts, '%Y-%m-%d')
+    end_date = datetime.strptime(repayment_ends, '%Y-%m-%d')
+    months_difference = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
+    period = f"{months_difference} months"
+
+    interest_rate_percentage_over_a_year = db.query(models.LoanAccount) \
+        .join(models.MemberLoanAccount,
+              models.MemberLoanAccount.loan_id == models.LoanAccount.id) \
+        .join(models.LoansTransaction,
+              models.LoansTransaction.loans_acc_id == models.MemberLoanAccount.id) \
+        .filter(models.LoansTransaction.transaction_id == transaction_id) \
+        .first()
+    interest_rate_per_year = interest_rate_percentage_over_a_year.interest_amt
+    interest_per_rate_month_percent = interest_rate_per_year / 12
+
+    amount = db.query(models.LoansTransaction) \
+        .filter(models.LoansTransaction.transaction_id == transaction_id) \
+        .first()
+    price = amount.amount
+    interest_rate_percentage_on_loan = interest_per_rate_month_percent * months_difference
+    interest_rate_per_month_value = interest_per_rate_month_percent / 100
+    interest_rate = interest_rate_per_month_value * months_difference
+
+    interest = price * interest_rate
+    db.commit()
+    loan_advise = models.LoanAdvise(
+        period=period,
+        interest_rate_percentage=interest_rate_percentage_on_loan,
+        interest_rate_amount=interest,
+        repayment_starting_date=repayment_starts,
+        repayment_ending_date=repayment_ends,
+        application_fee=interest_rate_percentage_over_a_year.application_fee,
+        proccessing_fee=interest_rate_percentage_over_a_year.proccessing_fee,
+        loan_transaction_id=transaction_id,
+        issue_date=datetime.now()
+    )
+    db.add(loan_advise)
     db.commit()
 
     updated_transaction = db.query(models.LoansTransaction) \
@@ -256,6 +352,47 @@ async def disburse_loan(transaction_id: int,
         .first()
 
     return "Loan Disbursed"
+
+
+@router.get("/loan/advise/{transaction_id}")
+async def get_info_to_prepare_loan_advise(transaction_id: int,
+                                          user: dict = Depends(get_current_user),
+                                          db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    loan_details = db.query(models.LoanAdvise) \
+        .filter(models.LoanAdvise.loan_transaction_id == transaction_id) \
+        .first()
+    transaction_details = db.query(models.LoansTransaction) \
+        .filter(models.LoansTransaction.transaction_id == transaction_id) \
+        .first()
+
+    more_details = db.query(models.Members.firstname,
+                            models.Members.lastname,
+                            models.Members.middlename,
+                            models.AssociationMembers.association_members_id,
+                            models.Association.association_name,
+                            models.LoansTransaction.amount,
+                            models.LoansTransaction.transaction_date,
+                            models.MemberLoanAccount.member_id,
+                            models.LoanAccount.account_name,
+                            ) \
+        .select_from(models.LoansTransaction) \
+        .join(models.MemberLoanAccount,
+              models.LoansTransaction.loans_acc_id == models.MemberLoanAccount.id) \
+        .join(models.LoanAccount,
+              models.LoanAccount.id == models.MemberLoanAccount.loan_id) \
+        .join(models.Members,
+              models.Members.member_id == models.MemberLoanAccount.member_id) \
+        .join(models.AssociationMembers,
+              models.AssociationMembers.association_members_id == models.MemberLoanAccount.association_member_id) \
+        .join(models.Association,
+              models.Association.association_id == models.AssociationMembers.association_id) \
+        .filter(models.LoansTransaction.transaction_id == transaction_id) \
+        .first()
+
+    return {"Loan_Details": loan_details, "More_Details": more_details, "Transaction_Details": transaction_details}
 
 
 @router.get("/transaction/loan/{member_loans_acc_id}")
@@ -359,8 +496,95 @@ async def create_transactions_shares_acc_withdrawal(transactShare: SharesTransac
     db.add(transactions_models)
     db.flush()
     db.commit()
+    # transaction id
+    share_transaction_id = db.query(models.SharesTransaction) \
+        .order_by(desc(models.SharesTransaction.transaction_id)) \
+        .first()
+    # period
+    start_date = datetime.strptime(transactShare.starting_date, '%Y-%m-%d')
+    end_date = datetime.strptime(transactShare.ending_date, '%Y-%m-%d')
+
+    years_difference = end_date.year - start_date.year
+    interestPercentagePerYear = db.query(models.ShareAccount) \
+        .select_from(models.SharesTransaction) \
+        .join(models.MemberShareAccount,
+              models.SharesTransaction.shares_acc_id == models.MemberShareAccount.id) \
+        .join(models.ShareAccount,
+              models.ShareAccount.id == models.MemberShareAccount.share_id) \
+        .first()
+
+    if years_difference == 0:
+        months_difference = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
+        period = f"{months_difference} months"
+        interest_rate_percent = (interestPercentagePerYear.interest_amt / 12) * months_difference
+        interestRateValue = interest_rate_percent / 100
+        interest_rate_amount = interestRateValue * months_difference
+    elif years_difference == 1:
+        period = "1 year"
+        interest_rate_percent = (interestPercentagePerYear.interest_amt)
+        interestRateValue = interest_rate_percent / 100
+        interest_rate_amount = interestRateValue * 1
+    else:
+        period = f"{years_difference} years"
+        interest_rate_percent = interestPercentagePerYear.interest_amt * years_difference
+        interestRateValue = interest_rate_percent / 100
+        interest_rate_amount = interestRateValue * years_difference
+
+    share_certificate = models.ShareCert(
+        period=period,
+        interest_rate_percentage=interest_rate_percent,
+        interest_rate_amount=interest_rate_amount,
+        starting_date=transactShare.starting_date,
+        ending_date=transactShare.ending_date,
+        on_due_date=transactShare.on_due_date,
+        spending_means=transactShare.spending_means,
+        share_transaction_id=share_transaction_id.transaction_id
+    )
+    db.add(share_certificate)
+    db.commit()
 
     return "Share Withdrawn"
+
+
+@router.get("/share/slip/{transaction_id}")
+async def get_share_cert_info(transaction_id: int,
+                              user: dict = Depends(get_current_user),
+                              db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    member_info = db.query(models.Members.lastname,
+                           models.Members.firstname,
+                           models.Members.middlename,
+                           models.Members.address,
+                           models.Members.Town,
+                           models.Members.phone,
+                           models.SharesTransaction.amount,
+                           models.SharesTransaction.transaction_date,
+                           models.ShareAccount.account_name,
+                           models.MemberShareAccount.association_member_id) \
+        .select_from(models.SharesTransaction) \
+        .join(models.MemberShareAccount,
+              models.MemberShareAccount.id == models.SharesTransaction.shares_acc_id) \
+        .join(models.Members,
+              models.Members.member_id == models.MemberShareAccount.member_id) \
+        .join(models.ShareAccount,
+              models.ShareAccount.id == models.MemberShareAccount.share_id) \
+        .filter(models.SharesTransaction.transaction_id == transaction_id) \
+        .first()
+
+    transaction_details = db.query(models.ShareCert.period,
+                                   models.ShareCert.interest_rate_percentage,
+                                   models.ShareCert.interest_rate_amount,
+                                   models.ShareCert.spending_means,
+                                   models.ShareCert.on_due_date,
+                                   models.ShareCert.starting_date,
+                                   models.ShareCert.ending_date) \
+        .select_from(models.ShareCert) \
+        .filter(models.ShareCert.share_transaction_id == transaction_id) \
+        .first()
+
+    return {"Basic_Info": member_info, "Transaction_Details": transaction_details}
 
 
 @router.get("/transaction/share/{member_shares_acc_id}")
@@ -716,6 +940,3 @@ def insufficient_balance():
         headers={"WWW-Authenticate": "Bearer"},
     )
     return error_nkoa
-
-
-

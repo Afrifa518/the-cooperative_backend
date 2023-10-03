@@ -114,6 +114,7 @@ class ShareAccount(Base):
 
     shareme = relationship("MemberShareAccount", back_populates="share")
 
+
 class Commodities(Base):
     __tablename__ = 'commodities'
 
@@ -128,6 +129,7 @@ class Commodities(Base):
     ytidommoc = relationship("CommodityUnitsJoin", back_populates="commodity")
     commod = relationship("CommodityAccountCommodities", back_populates="accommo")
 
+
 class UnitsKg(Base):
     __tablename__ = "units/kg"
 
@@ -136,6 +138,7 @@ class UnitsKg(Base):
 
     trillion_per_unit = relationship("CommodityUnitsJoin", back_populates="unit_per_trillion")
     tinu = relationship("MemberCommodityAccCommodities", back_populates="unit")
+
 
 class CommodityUnitsJoin(Base):
     __tablename__ = "commodity_units_join"
@@ -146,6 +149,7 @@ class CommodityUnitsJoin(Base):
 
     commodity = relationship("Commodities", back_populates="ytidommoc")
     unit_per_trillion = relationship("UnitsKg", back_populates="trillion_per_unit")
+
 
 class CommodityGradeValues(Base):
     __tablename__ = "commodity_grade_values"
@@ -165,10 +169,17 @@ class CommodityAccount(Base):
     warehouse = Column(String)
     community = Column(String)
     association_type_id = Column(Integer, ForeignKey("associationtype.associationtype_id"))
+    rebagging_fee = Column(FLOAT)
+    treatment_fee = Column(FLOAT)
+    destoning_fee = Column(FLOAT)
+    cleaning_fee = Column(FLOAT)
+    storage_fee = Column(FLOAT)
+    tax_fee = Column(FLOAT)
 
     assohouse = relationship("AssociationType", back_populates="watertank")
     member_commodity = relationship("MemberCommodityAccount", back_populates="commodity")
     tnuota = relationship("CommodityAccountCommodities", back_populates="account")
+
 
 class CommodityAccountCommodities(Base):
     __tablename__ = "commodity_account_commodities"
@@ -180,6 +191,7 @@ class CommodityAccountCommodities(Base):
     account = relationship("CommodityAccount", back_populates="tnuota")
     accommo = relationship("Commodities", back_populates="commod")
 
+
 class CommodityValueTrack(Base):
     __tablename__ = 'commodity_value_track'
     id = Column(Integer, primary_key=True, index=True)
@@ -190,7 +202,6 @@ class CommodityValueTrack(Base):
     new_units_per_kg = Column("new_units/kg", Integer)
 
     tracker = relationship("Commodities", back_populates="tracked")
-
 
 
 class MemberSavingsAccount(Base):
@@ -257,6 +268,7 @@ class MemberCommodityAccount(Base):
     nso_account = relationship("CommodityTransactions", back_populates="account_nso")
     things_acc = relationship("MemberCommodityAccCommodities", back_populates="acc_things")
 
+
 class MemberCommodityAccCommodities(Base):
     __tablename__ = "member_commodity_acc_commodities"
 
@@ -266,12 +278,12 @@ class MemberCommodityAccCommodities(Base):
     units_id = Column(Integer, ForeignKey("units/kg.id"))
     total_number = Column(Integer)
     commodity_cash_value = Column(FLOAT)
+    wieght = Column(Integer)
+    tons = Column(Integer)
 
     acc_things = relationship("MemberCommodityAccount", back_populates="things_acc")
     com_ankasa = relationship("Commodities", back_populates="ankasa_com")
     unit = relationship("UnitsKg", back_populates="tinu")
-
-
 
 
 class AssociationType(Base):
@@ -317,7 +329,6 @@ class Association(Base):
     members = relationship("AssociationMembers", back_populates="memasso")
     assotype = relationship("AssociationType", back_populates="asso")
     leader = relationship("AssociationLeaders", back_populates="associa")
-
 
 
 class AssociationLeaders(Base):
@@ -393,10 +404,30 @@ class LoansTransaction(Base):
     transaction_date = Column(TIMESTAMP)
     loans_acc_id = Column(Integer, ForeignKey("member_loan_acc.id"))
     status = Column(String)
+    repayment_starts = Column(DATE)
+    repayment_ends = Column(DATE)
 
     loan_account = relationship("MemberLoanAccount", back_populates="loans_transactions")
     transaction_type = relationship("TransactionType", back_populates="loantransact")
     prepared_by = relationship("Users", back_populates="loans_transactions")
+    loanadvise = relationship("LoanAdvise", back_populates="advise")
+
+
+class LoanAdvise(Base):
+    __tablename__ = "loan_advise"
+
+    id = Column(Integer, primary_key=True, index=True)
+    period = Column(String)
+    interest_rate_percentage = Column(Integer)
+    interest_rate_amount = Column(FLOAT)
+    repayment_starting_date = Column(String)
+    repayment_ending_date = Column(String)
+    application_fee = Column(FLOAT)
+    proccessing_fee = Column(FLOAT)
+    loan_transaction_id = Column(Integer, ForeignKey("loans_transactions.transaction_id"))
+    issue_date = Column(TIMESTAMP)
+
+    advise = relationship("LoansTransaction", back_populates="loanadvise")
 
 
 class SharesTransaction(Base):
@@ -413,6 +444,23 @@ class SharesTransaction(Base):
     shares_accounts = relationship("MemberShareAccount", back_populates="shares_transactions")
     transaction_type = relationship("TransactionType", back_populates="sharetransact")
     prepared_by = relationship("Users", back_populates="shares_transactions")
+    slip = relationship("ShareCert", back_populates="transact")
+
+
+class ShareCert(Base):
+    __tablename__ = "share_cert"
+
+    id = Column(Integer, primary_key=True, index=True)
+    period = Column(String)
+    interest_rate_percentage = Column(FLOAT)
+    interest_rate_amount = Column(FLOAT)
+    starting_date = Column(String)
+    ending_date = Column(String)
+    on_due_date = Column(String)
+    spending_means = Column(String)
+    share_transaction_id = Column(Integer, ForeignKey("shares_transactions.transaction_id"))
+
+    transact = relationship("SharesTransaction", back_populates="slip")
 
 
 class CommodityTransactions(Base):
@@ -431,24 +479,3 @@ class CommodityTransactions(Base):
     type_nu = relationship("CommoditiesTransactionType", back_populates="nu_type")
     nipa_nu = relationship("Users", back_populates="nu_nipa")
     account_nso = relationship("MemberCommodityAccount", back_populates="nso_account")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

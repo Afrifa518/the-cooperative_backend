@@ -482,6 +482,8 @@ async def get_disbursed_loans_in_association(association_id: int,
             "Prepared_by": loan.prepared_by.username,
             "Narration": loan.narration,
             "Transaction_date": loan.transaction_date,
+            "Repayment_starts": loan.repayment_starts,
+            "Repayment_ends": loan.repayment_ends,
             "Member_name": loan.loan_account.membersowwn.firstname + " " + loan.loan_account.membersowwn.lastname,
             "Member_id": loan.loan_account.membersowwn.member_id
         })
