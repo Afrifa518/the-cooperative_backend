@@ -58,7 +58,6 @@ class SharesTransaction(BaseModel):
     Amount: float
     narration: Optional[str]
     shares_acc_id: int
-    starting_date: str
     ending_date: str
     on_due_date: str
     spending_means: str
@@ -371,8 +370,11 @@ async def get_info_to_prepare_loan_advise(transaction_id: int,
     more_details = db.query(models.Members.firstname,
                             models.Members.lastname,
                             models.Members.middlename,
+                            models.Members.address,
                             models.AssociationMembers.association_members_id,
                             models.Association.association_name,
+                            models.Association.cluster_office,
+                            models.Association.community_name,
                             models.LoansTransaction.amount,
                             models.LoansTransaction.transaction_date,
                             models.MemberLoanAccount.member_id,
@@ -475,33 +477,26 @@ async def create_transactions_shares_acc(transactShare: SharesTransaction,
     db.flush()
     db.commit()
 
-    return "Share Purchased"
+    balance_account_share = db.query(models.MemberShareAccount) \
+        .filter(models.MemberShareAccount.id == transactShare.shares_acc_id) \
+        .first()
 
+    if not balance_account_share:
+        raise HTTPException(status_code=404, detail="Balance account not found")
 
-@router.post("/transaction/share")
-async def create_transactions_shares_acc_withdrawal(transactShare: SharesTransaction,
-                                                    user: dict = Depends(get_current_user),
-                                                    db: Session = Depends(get_db)):
-    if user is None:
-        raise get_user_exception()
+    balance_account_share.current_balance = (+stamp)
 
-    transactions_models = models.SharesTransaction()
-    transactions_models.transactiontype_id = transactShare.transactiontype_id
-    transactions_models.amount = transactShare.Amount
-    transactions_models.prep_by = user.get("id")
-    transactions_models.narration = transactShare.narration
-    transactions_models.shares_acc_id = transactShare.shares_acc_id
-    transactions_models.transaction_date = datetime.now()
-
-    db.add(transactions_models)
-    db.flush()
     db.commit()
+
+
     # transaction id
     share_transaction_id = db.query(models.SharesTransaction) \
         .order_by(desc(models.SharesTransaction.transaction_id)) \
         .first()
     # period
-    start_date = datetime.strptime(transactShare.starting_date, '%Y-%m-%d')
+    current_datetime = datetime.now()
+    formatted_date = current_datetime.strftime('%Y-%m-%d')
+    start_date = datetime.strptime(formatted_date, '%Y-%m-%d')
     end_date = datetime.strptime(transactShare.ending_date, '%Y-%m-%d')
 
     years_difference = end_date.year - start_date.year
@@ -512,35 +507,70 @@ async def create_transactions_shares_acc_withdrawal(transactShare: SharesTransac
         .join(models.ShareAccount,
               models.ShareAccount.id == models.MemberShareAccount.share_id) \
         .first()
-
+    price = share_transaction_id.amount
     if years_difference == 0:
         months_difference = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
         period = f"{months_difference} months"
         interest_rate_percent = (interestPercentagePerYear.interest_amt / 12) * months_difference
         interestRateValue = interest_rate_percent / 100
-        interest_rate_amount = interestRateValue * months_difference
+        # interest_rate_amount = interestRateValue * months_difference
+        interest = price * interestRateValue
     elif years_difference == 1:
         period = "1 year"
         interest_rate_percent = (interestPercentagePerYear.interest_amt)
         interestRateValue = interest_rate_percent / 100
         interest_rate_amount = interestRateValue * 1
+        interest = price * interest_rate_amount
     else:
         period = f"{years_difference} years"
-        interest_rate_percent = interestPercentagePerYear.interest_amt * years_difference
-        interestRateValue = interest_rate_percent / 100
-        interest_rate_amount = interestRateValue * years_difference
-
+        interest_rate_percent = (interestPercentagePerYear.interest_amt / 100) * years_difference
+        # interestRateValue = interest_rate_percent / 100
+        # interest_rate_amount = interestRateValue * years_difference
+        interest = price * interest_rate_percent
     share_certificate = models.ShareCert(
         period=period,
         interest_rate_percentage=interest_rate_percent,
-        interest_rate_amount=interest_rate_amount,
-        starting_date=transactShare.starting_date,
+        interest_rate_amount=interest,
+        starting_date=formatted_date,
         ending_date=transactShare.ending_date,
         on_due_date=transactShare.on_due_date,
         spending_means=transactShare.spending_means,
         share_transaction_id=share_transaction_id.transaction_id
     )
     db.add(share_certificate)
+    db.commit()
+
+    return "Share Purchased"
+
+
+class SharesTransactionWith(BaseModel):
+    transactiontype_id: int
+    Amount: float
+    narration: Optional[str]
+    shares_acc_id: int
+@router.post("/transaction/share")
+async def create_transactions_shares_acc_withdrawal(transactShare: SharesTransactionWith,
+                                                    user: dict = Depends(get_current_user),
+                                                    db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    shareValue = db.query(models.ShareAccount.share_value) \
+        .select_from(models.ShareAccount) \
+        .join(models.MemberShareAccount, models.ShareAccount.id == models.MemberShareAccount.share_id) \
+        .filter(models.MemberShareAccount.id == transactShare.shares_acc_id) \
+        .first()
+
+    stamp = transactShare.Amount * shareValue.share_value
+    transactions_models = models.SharesTransaction()
+    transactions_models.transactiontype_id = transactShare.transactiontype_id
+    transactions_models.amount = stamp
+    transactions_models.prep_by = user.get("id")
+    transactions_models.narration = transactShare.narration
+    transactions_models.shares_acc_id = transactShare.shares_acc_id
+    transactions_models.transaction_date = datetime.now()
+
+    db.add(transactions_models)
+    db.flush()
     db.commit()
 
     return "Share Withdrawn"
@@ -559,13 +589,22 @@ async def get_share_cert_info(transaction_id: int,
                            models.Members.address,
                            models.Members.Town,
                            models.Members.phone,
+                           models.Members.nextOfKin,
                            models.SharesTransaction.amount,
                            models.SharesTransaction.transaction_date,
                            models.ShareAccount.account_name,
-                           models.MemberShareAccount.association_member_id) \
+                           models.ShareAccount.interest_amt,
+                           models.MemberShareAccount.association_member_id,
+                           models.Association.association_name,
+                           models.Association.cluster_office,
+                           models.Association.community_name) \
         .select_from(models.SharesTransaction) \
         .join(models.MemberShareAccount,
               models.MemberShareAccount.id == models.SharesTransaction.shares_acc_id) \
+        .join(models.AssociationMembers,
+              models.MemberShareAccount.association_member_id == models.AssociationMembers.association_members_id) \
+        .join(models.Association,
+              models.AssociationMembers.association_id == models.Association.association_id) \
         .join(models.Members,
               models.Members.member_id == models.MemberShareAccount.member_id) \
         .join(models.ShareAccount,

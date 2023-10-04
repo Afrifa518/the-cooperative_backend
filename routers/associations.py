@@ -551,22 +551,22 @@ async def get_association_passbook_info(association_id: int,
         .order_by(desc(models.AssociationMembers.association_members_id)) \
         .all()
 
-    all_commodity_acc = db.query(models.MemberCommodityAccount.amt_valued,
-                                 models.MemberCommodityAccount.member_id,
-                                 models.MemberCommodityAccount.id,
-                                 models.MemberCommodityAccount.association_member_id,
-                                 models.CommodityAccount.warehouse,
-                                 models.Members.firstname,
-                                 models.Members.lastname) \
-        .select_from(models.Association) \
-        .join(models.AssociationMembers, models.AssociationMembers.association_id == models.Association.association_id) \
-        .join(models.MemberCommodityAccount,
-              models.MemberCommodityAccount.association_member_id == models.AssociationMembers.association_members_id) \
-        .join(models.CommodityAccount, models.CommodityAccount.id == models.MemberCommodityAccount.commodity_id) \
-        .join(models.Members, models.Members.member_id == models.MemberCommodityAccount.member_id) \
-        .filter(models.Association.association_id == association_id) \
-        .order_by(desc(models.AssociationMembers.association_members_id)) \
-        .all()
+    # all_commodity_acc = db.query(models.MemberCommodityAccount.cash_value,
+    #                              models.MemberCommodityAccount.member_id,
+    #                              models.MemberCommodityAccount.id,
+    #                              models.MemberCommodityAccount.association_member_id,
+    #                              models.CommodityAccount.warehouse,
+    #                              models.Members.firstname,
+    #                              models.Members.lastname) \
+    #     .select_from(models.Association) \
+    #     .join(models.AssociationMembers, models.AssociationMembers.association_id == models.Association.association_id) \
+    #     .join(models.MemberCommodityAccount,
+    #           models.MemberCommodityAccount.association_member_id == models.AssociationMembers.association_members_id) \
+    #     .join(models.CommodityAccount, models.CommodityAccount.id == models.MemberCommodityAccount.commodity_id) \
+    #     .join(models.Members, models.Members.member_id == models.MemberCommodityAccount.member_id) \
+    #     .filter(models.Association.association_id == association_id) \
+    #     .order_by(desc(models.AssociationMembers.association_members_id)) \
+    #     .all()
 
     current_datetime = datetime.now()
 
@@ -722,8 +722,10 @@ async def get_association_passbook_info(association_id: int,
         .order_by(desc(models.SharesTransaction.transaction_id)) \
         .all()
 
-    return {"All_Savings_account": all_savings_acc, "All_Loans_account": all_loans_acc,
-            "All_Shares_acount": all_shares_acc, "All_Commodity_account": all_commodity_acc,
+    return {"All_Savings_account": all_savings_acc,
+            "All_Loans_account": all_loans_acc,
+            "All_Shares_acount": all_shares_acc,
+            # "All_Commodity_account": all_commodity_acc,
             "Todays_Savings_Transactions": todays_savings_accounts_transactions,
             "Savings_Transactions": savings_accounts_transactions,
             "Todays_Loans_Transactions": todays_loan_accounts_transactions,
