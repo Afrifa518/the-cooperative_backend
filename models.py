@@ -329,6 +329,34 @@ class Association(Base):
     members = relationship("AssociationMembers", back_populates="memasso")
     assotype = relationship("AssociationType", back_populates="asso")
     leader = relationship("AssociationLeaders", back_populates="associa")
+    asoAc = relationship("MomoAccountAssociation", back_populates="momo")
+    asoCashAc = relationship("CashAssociationAccount", back_populates="cash")
+
+
+class CashAssociationAccount(Base):
+    __tablename__ = "cash_association_account"
+
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(String)
+    cash_savings_bal = Column(FLOAT)
+    cash_loans_bal = Column(FLOAT)
+    cash_shares_bal = Column(FLOAT)
+    association_id = Column(Integer, ForeignKey("association.association_id"))
+
+    cash = relationship("Association", back_populates="asoCashAc")
+
+
+class MomoAccountAssociation(Base):
+    __tablename__ = "momo_account_association"
+
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(String)
+    momo_savings_bal = Column(FLOAT)
+    momo_loans_bal = Column(FLOAT)
+    momo_shares_bal = Column(FLOAT)
+    association_id = Column(Integer, ForeignKey("association.association_id"))
+
+    momo = relationship("Association", back_populates="asoAc")
 
 
 class AssociationLeaders(Base):

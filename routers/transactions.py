@@ -11,9 +11,7 @@ from database import engine, SessionLocal
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from .auth import get_current_user, get_user_exception
-from datetime import datetime
-from sqlalchemy.exc import IntegrityError
-from datetime import datetime
+from datetime import datetime, timedelta
 
 router = APIRouter(
     prefix="/transactions",
@@ -58,9 +56,10 @@ class SharesTransaction(BaseModel):
     Amount: float
     narration: Optional[str]
     shares_acc_id: int
-    ending_date: str
+    period: float
     on_due_date: str
     spending_means: str
+    account_name: str
 
 
 # Savings
@@ -241,16 +240,20 @@ async def approve_loan(transaction_id: int = Form(...),
 @router.patch("/disburse/loan")
 async def disburse_loan(transaction_id: int = Form(...),
                         repayment_starts: str = Form(...),
-                        repayment_ends: str = Form(...),
+                        num_of_weeks_to_end_payment: int = Form(...),
                         user: dict = Depends(get_current_user),
                         db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
 
+    start_date = datetime.strptime(repayment_starts, '%Y-%m-%d')
+    repayment_end_datee = start_date + timedelta(weeks=num_of_weeks_to_end_payment)
+    repayment_end_date = repayment_end_datee.strftime('%Y-%m-%d')
+
     update_data = {
         models.LoansTransaction.status: 'Disbursed',
         models.LoansTransaction.repayment_starts: repayment_starts,
-        models.LoansTransaction.repayment_ends: repayment_ends
+        models.LoansTransaction.repayment_ends: repayment_end_date
     }
 
     updated_transaction = db.query(models.LoansTransaction) \
@@ -307,8 +310,8 @@ async def disburse_loan(transaction_id: int = Form(...),
     if not updated_transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
-    start_date = datetime.strptime(repayment_starts, '%Y-%m-%d')
-    end_date = datetime.strptime(repayment_ends, '%Y-%m-%d')
+    # start_date = datetime.strptime(repayment_starts, '%Y-%m-%d')
+    end_date = datetime.strptime(repayment_end_date, '%Y-%m-%d')
     months_difference = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
     period = f"{months_difference} months"
 
@@ -337,7 +340,7 @@ async def disburse_loan(transaction_id: int = Form(...),
         interest_rate_percentage=interest_rate_percentage_on_loan,
         interest_rate_amount=interest,
         repayment_starting_date=repayment_starts,
-        repayment_ending_date=repayment_ends,
+        repayment_ending_date=repayment_end_date,
         application_fee=interest_rate_percentage_over_a_year.application_fee,
         proccessing_fee=interest_rate_percentage_over_a_year.proccessing_fee,
         loan_transaction_id=transaction_id,
@@ -371,6 +374,7 @@ async def get_info_to_prepare_loan_advise(transaction_id: int,
                             models.Members.lastname,
                             models.Members.middlename,
                             models.Members.address,
+                            models.Members.nextOfKin,
                             models.AssociationMembers.association_members_id,
                             models.Association.association_name,
                             models.Association.cluster_office,
@@ -394,7 +398,44 @@ async def get_info_to_prepare_loan_advise(transaction_id: int,
         .filter(models.LoansTransaction.transaction_id == transaction_id) \
         .first()
 
-    return {"Loan_Details": loan_details, "More_Details": more_details, "Transaction_Details": transaction_details}
+    amount_to_be_paid = more_details.amount
+    total_interest_to_be_paid = loan_details.interest_rate_amount
+    date_to_start_repayment = loan_details.repayment_starting_date
+    date_to_end_repayment = loan_details.repayment_ending_date
+
+    start_date = datetime.strptime(date_to_start_repayment, '%Y-%m-%d')
+    end_date = datetime.strptime(date_to_end_repayment, '%Y-%m-%d')
+    total_days = (end_date - start_date).days
+
+    total_weeks = (total_days + 6) // 7
+    amount_per_week = round(amount_to_be_paid / total_weeks, 2)
+    interest_per_week = round(total_interest_to_be_paid / total_weeks, 2)
+    weekly_payments = []
+    current_date = start_date
+    for week in range(total_weeks):
+        while current_date.weekday() != 4:
+            current_date += timedelta(days=1)
+
+        weekly_payments.append({
+            "Date": current_date.strftime('%Y-%m-%d'),
+            "Amount_to_be_Paid": amount_per_week,
+            "Interest_Amount": interest_per_week
+        })
+
+        current_date += timedelta(days=1)
+
+    total_amount_per_week = round(sum(payment["Amount_to_be_Paid"] for payment in weekly_payments), 2)
+    total_interest_per_week = round(sum(payment["Interest_Amount"] for payment in weekly_payments), 2)
+
+    return {
+        "Loan_Details": loan_details,
+        "More_Details": more_details,
+        "Transaction_Details": transaction_details,
+        "Repayment_Schedule": weekly_payments,
+        "Amount_Total": total_amount_per_week,
+        "Interest_Total": total_interest_per_week,
+        "Total_Khraa": round(total_amount_per_week + total_interest_per_week , 2)
+    }
 
 
 @router.get("/transaction/loan/{member_loans_acc_id}")
@@ -484,22 +525,31 @@ async def create_transactions_shares_acc(transactShare: SharesTransaction,
     if not balance_account_share:
         raise HTTPException(status_code=404, detail="Balance account not found")
 
-    balance_account_share.current_balance = (+stamp)
+    balance_account_share.current_balance += stamp
 
     db.commit()
-
+    current_datetime = datetime.now()
+    formatted_date = current_datetime.strftime('%Y-%m-%d')
+    start_date = datetime.strptime(formatted_date, '%Y-%m-%d')
+    period = transactShare.period
+    if period < 1:
+        months = 12 * period
+        ending_date = start_date + timedelta(days=31 * months)
+    else:
+        ending_date = start_date + timedelta(days=365 * int(period))
+    ending_date = ending_date.strftime('%Y-%m-%d')
 
     # transaction id
     share_transaction_id = db.query(models.SharesTransaction) \
         .order_by(desc(models.SharesTransaction.transaction_id)) \
         .first()
     # period
-    current_datetime = datetime.now()
-    formatted_date = current_datetime.strftime('%Y-%m-%d')
-    start_date = datetime.strptime(formatted_date, '%Y-%m-%d')
-    end_date = datetime.strptime(transactShare.ending_date, '%Y-%m-%d')
 
-    years_difference = end_date.year - start_date.year
+    end_date = datetime.strptime(ending_date, '%Y-%m-%d')
+
+    years_difference = (end_date.year - start_date.year)
+    months_difference = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
+    print(years_difference, months_difference)
     interestPercentagePerYear = db.query(models.ShareAccount) \
         .select_from(models.SharesTransaction) \
         .join(models.MemberShareAccount,
@@ -508,7 +558,8 @@ async def create_transactions_shares_acc(transactShare: SharesTransaction,
               models.ShareAccount.id == models.MemberShareAccount.share_id) \
         .first()
     price = share_transaction_id.amount
-    if years_difference == 0:
+    if years_difference == 1 and months_difference < 12 or years_difference == 0:
+        # print("years_difference == 0 and months_difference < 12")
         months_difference = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
         period = f"{months_difference} months"
         interest_rate_percent = (interestPercentagePerYear.interest_amt / 12) * months_difference
@@ -516,12 +567,14 @@ async def create_transactions_shares_acc(transactShare: SharesTransaction,
         # interest_rate_amount = interestRateValue * months_difference
         interest = price * interestRateValue
     elif years_difference == 1:
+        # print("years_difference == 1")
         period = "1 year"
         interest_rate_percent = (interestPercentagePerYear.interest_amt)
         interestRateValue = interest_rate_percent / 100
         interest_rate_amount = interestRateValue * 1
         interest = price * interest_rate_amount
     else:
+        # print("years_difference > 1")
         period = f"{years_difference} years"
         interest_rate_percent = (interestPercentagePerYear.interest_amt / 100) * years_difference
         # interestRateValue = interest_rate_percent / 100
@@ -532,9 +585,9 @@ async def create_transactions_shares_acc(transactShare: SharesTransaction,
         interest_rate_percentage=interest_rate_percent,
         interest_rate_amount=interest,
         starting_date=formatted_date,
-        ending_date=transactShare.ending_date,
+        ending_date=ending_date,
         on_due_date=transactShare.on_due_date,
-        spending_means=transactShare.spending_means,
+        spending_means=f"{transactShare.spending_means} {transactShare.account_name}",
         share_transaction_id=share_transaction_id.transaction_id
     )
     db.add(share_certificate)
@@ -548,6 +601,8 @@ class SharesTransactionWith(BaseModel):
     Amount: float
     narration: Optional[str]
     shares_acc_id: int
+
+
 @router.post("/transaction/share")
 async def create_transactions_shares_acc_withdrawal(transactShare: SharesTransactionWith,
                                                     user: dict = Depends(get_current_user),
@@ -658,6 +713,26 @@ async def get_one_shares_account_transactions(member_shares_acc_id: int,
         .all()
 
     return accounts_transaction
+
+
+@router.get("/savings/share/{member_shares_acc_id}")
+async def get_one_shares_account_savings_account(member_shares_acc_id: int,
+                                                 user: dict = Depends(get_current_user),
+                                                 db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    accountss = db.query(models.SavingsAccount.account_name,
+                         models.MemberSavingsAccount.id) \
+        .select_from(models.MemberShareAccount) \
+        .join(models.Members,
+              models.Members.member_id == models.MemberShareAccount.member_id) \
+        .join(models.MemberSavingsAccount,
+              models.MemberSavingsAccount.member_id == models.Members.member_id) \
+        .join(models.SavingsAccount,
+              models.SavingsAccount.id == models.MemberSavingsAccount.savings_id) \
+        .filter(models.MemberShareAccount.id == member_shares_acc_id) \
+        .all()
+    return {"Accounts": accountss}
 
 
 @router.get("/mass/form/{association_id}")
