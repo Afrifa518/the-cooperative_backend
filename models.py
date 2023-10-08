@@ -337,11 +337,14 @@ class CashAssociationAccount(Base):
     __tablename__ = "cash_association_account"
 
     id = Column(Integer, primary_key=True, index=True)
-    date = Column(String)
+    date = Column(String, unique=True)
     cash_savings_bal = Column(FLOAT)
     cash_loans_bal = Column(FLOAT)
     cash_shares_bal = Column(FLOAT)
     association_id = Column(Integer, ForeignKey("association.association_id"))
+    cash_value = Column(FLOAT)
+    withdrawal_value = Column(FLOAT)
+    transfers_value = Column(FLOAT)
 
     cash = relationship("Association", back_populates="asoCashAc")
 
@@ -351,7 +354,7 @@ class MomoAccountAssociation(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     date = Column(String)
-    momo_savings_bal = Column(FLOAT)
+    momo_bal = Column(FLOAT)
     momo_loans_bal = Column(FLOAT)
     momo_shares_bal = Column(FLOAT)
     association_id = Column(Integer, ForeignKey("association.association_id"))
@@ -415,6 +418,7 @@ class SavingsTransaction(Base):
     narration = Column(String)
     transaction_date = Column(TIMESTAMP)
     savings_acc_id = Column(Integer, ForeignKey("member_savings_acc.id"))
+    balance = Column(FLOAT)
 
     savings_account = relationship("MemberSavingsAccount", back_populates="savings_transactions")
     transaction_type = relationship("TransactionType", back_populates="savings_transactions")
@@ -434,6 +438,7 @@ class LoansTransaction(Base):
     status = Column(String)
     repayment_starts = Column(DATE)
     repayment_ends = Column(DATE)
+    balance = Column(FLOAT)
 
     loan_account = relationship("MemberLoanAccount", back_populates="loans_transactions")
     transaction_type = relationship("TransactionType", back_populates="loantransact")
@@ -446,7 +451,7 @@ class LoanAdvise(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     period = Column(String)
-    interest_rate_percentage = Column(Integer)
+    interest_rate_percentage = Column(FLOAT)
     interest_rate_amount = Column(FLOAT)
     repayment_starting_date = Column(String)
     repayment_ending_date = Column(String)
@@ -468,6 +473,7 @@ class SharesTransaction(Base):
     narration = Column(String)
     transaction_date = Column(TIMESTAMP)
     shares_acc_id = Column(Integer, ForeignKey("member_share_acc.id"))
+    balance = Column(FLOAT)
 
     shares_accounts = relationship("MemberShareAccount", back_populates="shares_transactions")
     transaction_type = relationship("TransactionType", back_populates="sharetransact")
@@ -502,6 +508,7 @@ class CommodityTransactions(Base):
     commodity_acc_id = Column(Integer, ForeignKey("member_commodity_acc.id"))
     amount_of_commodity = Column(Integer)
     commodities_id = Column(Integer, ForeignKey("commodities.id"))
+    balance = Column(FLOAT)
 
     thethings = relationship("Commodities", back_populates="thingsthe")
     type_nu = relationship("CommoditiesTransactionType", back_populates="nu_type")

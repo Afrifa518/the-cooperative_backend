@@ -71,6 +71,8 @@ async def create_transactions_savings_acc(transactSave: SavingsTransaction,
     if user is None:
         raise get_user_exception()
 
+    prev_balance = db.query(models.MemberSavingsAccount).filter(models.MemberSavingsAccount.id == transactSave.savings_acc_id).first()
+
     results = await check_for_stamps_and_cash(member_savings_acc=transactSave.savings_acc_id, user=user, db=db)
 
     if results.stamp_value:
@@ -82,6 +84,7 @@ async def create_transactions_savings_acc(transactSave: SavingsTransaction,
         transactions_models.narration = transactSave.narration
         transactions_models.savings_acc_id = transactSave.savings_acc_id
         transactions_models.transaction_date = datetime.now()
+        transactions_models.balance = prev_balance.current_balance + stamp
     else:
         transactions_models = models.SavingsTransaction()
         transactions_models.transactiontype_id = transactSave.transactiontype_id
@@ -90,6 +93,30 @@ async def create_transactions_savings_acc(transactSave: SavingsTransaction,
         transactions_models.narration = transactSave.narration
         transactions_models.savings_acc_id = transactSave.savings_acc_id
         transactions_models.transaction_date = datetime.now()
+        transactions_models.balance = prev_balance.current_balance + transactSave.Amount
+
+    if transactSave.transactiontype_id == 2:
+        association_id = db.query(models.Association) \
+            .select_from(models.Association) \
+            .join(models.AssociationMembers,
+                  models.AssociationMembers.association_id == models.Association.association_id) \
+            .join(models.MemberSavingsAccount,
+                  models.MemberSavingsAccount.association_member_id == models.AssociationMembers.association_members_id) \
+            .filter(models.MemberSavingsAccount.id == transactSave.savings_acc_id) \
+            .first()
+        current_date = datetime.now()
+        today_date = current_date.strftime('%Y-%m-%d')
+
+        today = db.query(models.MomoAccountAssociation) \
+            .filter(models.MomoAccountAssociation.date == today_date,
+                    models.MomoAccountAssociation.association_id == association_id.association_id) \
+            .first()
+        if today:
+            if results.stamp_value:
+                today.momo_bal -= stamp
+            else:
+                today.momo_bal -= transactSave.Amount
+            db.commit()
 
     db.add(transactions_models)
     db.flush()
@@ -105,6 +132,9 @@ async def create_transactions_withdrawals_savings_acc(transactSavee: SavingTrans
     if user is None:
         raise get_user_exception()
 
+    prev_balance = db.query(models.MemberSavingsAccount).filter(
+        models.MemberSavingsAccount.id == transactSavee.savings_acc_id).first()
+
     transactions_models = models.SavingsTransaction()
     transactions_models.transactiontype_id = transactSavee.transactiontype_idd
     transactions_models.amount = transactSavee.Amountt
@@ -112,6 +142,7 @@ async def create_transactions_withdrawals_savings_acc(transactSavee: SavingTrans
     transactions_models.narration = transactSavee.narrationn
     transactions_models.savings_acc_id = transactSavee.savings_acc_idd
     transactions_models.transaction_date = datetime.now()
+    transactions_models.balance = prev_balance.current_balance - transactSavee.Amountt
 
     db.add(transactions_models)
     db.flush()
@@ -159,6 +190,7 @@ async def get_one_savings_accounts_transactions(member_savings_acc_id: int,
         models.SavingsTransaction.amount,
         models.TransactionType.transactiontype_name,
         models.SavingsTransaction.transaction_id,
+        models.SavingsTransaction.balance
     ).select_from(models.SavingsTransaction) \
         .join(models.TransactionType,
               models.SavingsTransaction.transactiontype_id == models.TransactionType.transactype_id) \
@@ -188,6 +220,9 @@ async def create_transactions_loans_request_acc(transactLoan: LoansTransaction,
     if user is None:
         raise get_user_exception()
 
+    prev_balance = db.query(models.MemberLoanAccount).filter(
+        models.MemberLoanAccount.id == transactLoan.loans_acc_id).first()
+
     transactions_models = models.LoansTransaction()
     transactions_models.transactiontype_id = transactLoan.transactiontype_id
     transactions_models.amount = transactLoan.Amount
@@ -195,10 +230,13 @@ async def create_transactions_loans_request_acc(transactLoan: LoansTransaction,
     transactions_models.narration = transactLoan.narration
     transactions_models.loans_acc_id = transactLoan.loans_acc_id
     transactions_models.transaction_date = datetime.now()
+
     if transactLoan.transactiontype_id == 2:
         transactions_models.status = "Requested"
+        transactions_models.balance = prev_balance.current_balance
     elif transactLoan.transactiontype_id == 1:
         transactions_models.status = "Pay off"
+        transactions_models.balance = prev_balance.current_balance + transactLoan.Amount
     else:
         transactions_models.status = "N/A"
 
@@ -250,10 +288,15 @@ async def disburse_loan(transaction_id: int = Form(...),
     repayment_end_datee = start_date + timedelta(weeks=num_of_weeks_to_end_payment)
     repayment_end_date = repayment_end_datee.strftime('%Y-%m-%d')
 
+    loanTransaction = db.query(models.LoansTransaction) \
+        .filter(models.LoansTransaction.transaction_id == transaction_id) \
+
+
     update_data = {
         models.LoansTransaction.status: 'Disbursed',
         models.LoansTransaction.repayment_starts: repayment_starts,
-        models.LoansTransaction.repayment_ends: repayment_end_date
+        models.LoansTransaction.repayment_ends: repayment_end_date,
+        models.LoansTransaction.balance: loanTransaction.amount + loanTransaction.balance
     }
 
     updated_transaction = db.query(models.LoansTransaction) \
@@ -452,7 +495,8 @@ async def get_one_loan_accounts_transactions(member_loans_acc_id: int,
         models.LoansTransaction.amount,
         models.TransactionType.transactiontype_name,
         models.LoansTransaction.transaction_id,
-        models.LoansTransaction.status
+        models.LoansTransaction.status,
+        models.LoansTransaction.balance
     ).select_from(models.LoansTransaction) \
         .join(models.TransactionType,
               models.LoansTransaction.transactiontype_id == models.TransactionType.transactype_id) \
@@ -499,7 +543,7 @@ async def create_transactions_shares_acc(transactShare: SharesTransaction,
     if user is None:
         raise get_user_exception()
 
-    shareValue = db.query(models.ShareAccount.share_value) \
+    shareValue = db.query(models.ShareAccount) \
         .select_from(models.ShareAccount) \
         .join(models.MemberShareAccount, models.ShareAccount.id == models.MemberShareAccount.share_id) \
         .filter(models.MemberShareAccount.id == transactShare.shares_acc_id) \
@@ -513,6 +557,7 @@ async def create_transactions_shares_acc(transactShare: SharesTransaction,
     transactions_models.narration = transactShare.narration
     transactions_models.shares_acc_id = transactShare.shares_acc_id
     transactions_models.transaction_date = datetime.now()
+    transactions_models.balance = shareValue.current_balance + stamp
 
     db.add(transactions_models)
     db.flush()
@@ -525,7 +570,7 @@ async def create_transactions_shares_acc(transactShare: SharesTransaction,
     if not balance_account_share:
         raise HTTPException(status_code=404, detail="Balance account not found")
 
-    balance_account_share.current_balance += stamp
+    balance_account_share.current_balance = stamp
 
     db.commit()
     current_datetime = datetime.now()
@@ -609,7 +654,8 @@ async def create_transactions_shares_acc_withdrawal(transactShare: SharesTransac
                                                     db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
-    shareValue = db.query(models.ShareAccount.share_value) \
+    shareValue = db.query(models.ShareAccount.share_value,
+                          models.MemberShareAccount.current_balance) \
         .select_from(models.ShareAccount) \
         .join(models.MemberShareAccount, models.ShareAccount.id == models.MemberShareAccount.share_id) \
         .filter(models.MemberShareAccount.id == transactShare.shares_acc_id) \
@@ -623,6 +669,7 @@ async def create_transactions_shares_acc_withdrawal(transactShare: SharesTransac
     transactions_models.narration = transactShare.narration
     transactions_models.shares_acc_id = transactShare.shares_acc_id
     transactions_models.transaction_date = datetime.now()
+    transactions_models.balance = shareValue.current_balance - stamp
 
     db.add(transactions_models)
     db.flush()
@@ -694,7 +741,8 @@ async def get_one_shares_account_transactions(member_shares_acc_id: int,
         models.Users.username,
         models.SharesTransaction.amount,
         models.TransactionType.transactiontype_name,
-        models.SharesTransaction.transaction_id
+        models.SharesTransaction.transaction_id,
+        models.SharesTransaction.balance
     ).select_from(models.SharesTransaction) \
         .join(models.TransactionType,
               models.SharesTransaction.transactiontype_id == models.TransactionType.transactype_id) \
@@ -777,7 +825,8 @@ async def transfers_in_savings_account(tranfer: TransferSavings,
     if tranfer.to_accountType == "savings":
         to_acc = db.query(models.Members.firstname,
                           models.Members.lastname,
-                          models.SavingsAccount.account_name, ) \
+                          models.SavingsAccount.account_name,
+                          models.MemberSavingsAccount.current_balance) \
             .select_from(models.MemberSavingsAccount) \
             .join(models.Members, models.MemberSavingsAccount.member_id == models.Members.member_id) \
             .join(models.SavingsAccount, models.SavingsAccount.id == models.MemberSavingsAccount.savings_id) \
@@ -800,6 +849,7 @@ async def transfers_in_savings_account(tranfer: TransferSavings,
             transfer_from.narration = f"Transferred to: {to_acc.firstname} {to_acc.lastname}'s {to_acc.account_name} account"
             transfer_from.savings_acc_id = tranfer.savings_acc_id
             transfer_from.transactiontype_id = 2
+            transfer_from.balance = from_acc.current_balance - tranfer.Amount
             transfer_from.transaction_date = datetime.now()
             transfer_from.prep_by = user.get("id")
             db.add(transfer_from)
@@ -810,6 +860,7 @@ async def transfers_in_savings_account(tranfer: TransferSavings,
             trn.amount = tranfer.Amount
             trn.narration = f"Received from: {from_acc.firstname} {from_acc.lastname}'s {from_acc.account_name} account"
             trn.savings_acc_id = tranfer.to_member_account_id
+            trn.balance = to_acc.current_balance + tranfer.Amount
             trn.prep_by = user.get("id")
             trn.transaction_date = datetime.now()
             db.add(trn)
@@ -822,7 +873,8 @@ async def transfers_in_savings_account(tranfer: TransferSavings,
     elif tranfer.to_accountType == "loans":
         to_acc = db.query(models.Members.firstname,
                           models.Members.lastname,
-                          models.LoanAccount.account_name) \
+                          models.LoanAccount.account_name,
+                          models.MemberLoanAccount.current_balance) \
             .select_from(models.MemberLoanAccount) \
             .join(models.Members, models.MemberLoanAccount.member_id == models.Members.member_id) \
             .join(models.LoanAccount, models.LoanAccount.id == models.MemberLoanAccount.loan_id) \
@@ -845,6 +897,7 @@ async def transfers_in_savings_account(tranfer: TransferSavings,
             transfer_from.narration = f"Transferred to: {to_acc.firstname} {to_acc.lastname}'s {to_acc.account_name} account"
             transfer_from.savings_acc_id = tranfer.savings_acc_id
             transfer_from.transactiontype_id = 2
+            transfer_from.balance = from_acc.current_balance + tranfer.Amount
             transfer_from.transaction_date = datetime.now()
             transfer_from.prep_by = user.get("id")
             db.add(transfer_from)
@@ -856,6 +909,7 @@ async def transfers_in_savings_account(tranfer: TransferSavings,
             trn_to.narration = f"Paid from: {from_acc.firstname} {from_acc.lastname}'s {from_acc.account_name} account"
             trn_to.loans_acc_id = tranfer.to_member_account_id
             trn_to.prep_by = user.get("id")
+            trn_to.balance = to_acc.current_balance + tranfer.Amount
             trn_to.transaction_date = datetime.now()
             trn_to.status = "Pay off"
             db.add(trn_to)
@@ -867,7 +921,8 @@ async def transfers_in_savings_account(tranfer: TransferSavings,
     elif tranfer.to_accountType == "shares":
         to_acc = db.query(models.Members.firstname,
                           models.Members.lastname,
-                          models.ShareAccount.account_name) \
+                          models.ShareAccount.account_name,
+                          models.MemberShareAccount) \
             .select_from(models.MemberShareAccount) \
             .join(models.Members, models.MemberShareAccount.member_id == models.Members.member_id) \
             .join(models.ShareAccount, models.ShareAccount.id == models.MemberShareAccount.share_id) \
@@ -890,6 +945,7 @@ async def transfers_in_savings_account(tranfer: TransferSavings,
         transfer_from.narration = f"Transferred to: {to_acc.firstname} {to_acc.lastname}'s {to_acc.account_name} account"
         transfer_from.savings_acc_id = tranfer.savings_acc_id
         transfer_from.transactiontype_id = 2
+        transfer_from.balance = from_acc.current_balance + tranfer.Amount
         transfer_from.transaction_date = datetime.now()
         transfer_from.prep_by = user.get("id")
         db.add(transfer_from)
@@ -901,6 +957,7 @@ async def transfers_in_savings_account(tranfer: TransferSavings,
         trn_to.narration = f"Purchased from: {from_acc.firstname} {from_acc.lastname}'s {from_acc.account_name} account"
         trn_to.shares_acc_id = tranfer.to_member_account_id
         trn_to.prep_by = user.get("id")
+        trn_to.balance = to_acc.current_balance + tranfer.Amount
         trn_to.transaction_date = datetime.now()
         db.add(trn_to)
         db.commit()
