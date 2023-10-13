@@ -25,6 +25,8 @@ class Users(Base):
     user_staff = relationship("Association", foreign_keys="Association.staff_userid", back_populates="staff_user")
     user_creator = relationship("Association", foreign_keys="Association.created_by", back_populates="creator")
     nu_nipa = relationship("CommodityTransactions", back_populates="nipa_nu")
+    doer = relationship("SocietyBankAccounts", back_populates="use")
+    sotra = relationship("SocietyTransactions", back_populates="prepBy")
 
 
 class UserInfo(Base):
@@ -293,10 +295,40 @@ class AssociationType(Base):
     association_type = Column(String)
     accepted_forms = Column(String)
     open_date = Column(TIMESTAMP)
+    society_id = Column(Integer, ForeignKey("society.id"))
 
     asso = relationship("Association", back_populates="assotype")
     commodities_type = relationship("AssociationTypeCommodities", back_populates="type_commodities")
     watertank = relationship("CommodityAccount", back_populates="assohouse")
+    society = relationship("Society", back_populates="association")
+
+
+class Society(Base):
+    __tablename__ = "society"
+
+    id = Column(Integer, primary_key=True, index=True)
+    society = Column(String)
+
+    association = relationship("AssociationType", back_populates="society")
+    accbank = relationship("SocietyBankAccounts", back_populates="bankacc")
+
+
+class SocietyBankAccounts(Base):
+    __tablename__ = "society_bank_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_name = Column(String)
+    open_date = Column(String)
+    current_balance = Column(FLOAT)
+    society_id = Column(Integer, ForeignKey("society.id"))
+    purpose = Column(String, nullable=True)
+    opened_by = Column(Integer, ForeignKey("users.id"))
+
+    use = relationship("Users", back_populates="doer")
+    bankacc = relationship("Society", back_populates="accbank")
+    acsotra = relationship("SocietyTransactions", back_populates="trasoac")
+
+
 
 
 class AssociationTypeCommodities(Base):
@@ -358,8 +390,19 @@ class MomoAccountAssociation(Base):
     momo_loans_bal = Column(FLOAT)
     momo_shares_bal = Column(FLOAT)
     association_id = Column(Integer, ForeignKey("association.association_id"))
+    status = Column(String)
 
     momo = relationship("Association", back_populates="asoAc")
+    ba = relationship("ReconciliationNote", back_populates="mo")
+
+class ReconciliationNote(Base):
+    __tablename__ = "reconciliation_note"
+
+    id = Column(Integer, primary_key=True, index=True)
+    note = Column(String, nullable=True)
+    momo_id = Column(Integer, ForeignKey("momo_account_association.id"))
+
+    mo = relationship("MomoAccountAssociation", back_populates="ba")
 
 
 class AssociationLeaders(Base):
@@ -397,6 +440,7 @@ class TransactionType(Base):
     savings_transactions = relationship("SavingsTransaction", back_populates="transaction_type")
     loantransact = relationship("LoansTransaction", back_populates="transaction_type")
     sharetransact = relationship("SharesTransaction", back_populates="transaction_type")
+    tpytra = relationship("SocietyTransactions", back_populates="sotype")
 
 
 class CommoditiesTransactionType(Base):
@@ -408,6 +452,22 @@ class CommoditiesTransactionType(Base):
     nu_type = relationship("CommodityTransactions", back_populates="type_nu")
 
 
+class SocietyTransactions(Base):
+    __tablename__ = "society_transactions"
+
+    transaction_id = Column(Integer, primary_key=True, index=True)
+    transactiontype_id = Column(Integer, ForeignKey("transaction_type.transactype_id"))
+    amount = Column(FLOAT)
+    prep_by = Column(Integer, ForeignKey("users.id"))
+    narration = Column(String, nullable=True)
+    transaction_date = Column(TIMESTAMP)
+    balance = Column(FLOAT)
+    society_account_id = Column(Integer, ForeignKey("society_bank_accounts.id"))
+
+    prepBy = relationship("Users", back_populates="sotra")
+    sotype = relationship("TransactionType", back_populates="tpytra")
+    trasoac = relationship("SocietyBankAccounts", back_populates="acsotra")
+
 class SavingsTransaction(Base):
     __tablename__ = "savings_transactions"
 
@@ -418,7 +478,7 @@ class SavingsTransaction(Base):
     narration = Column(String)
     transaction_date = Column(TIMESTAMP)
     savings_acc_id = Column(Integer, ForeignKey("member_savings_acc.id"))
-    balance = Column(FLOAT)
+    balance = Column(FLOAT, nullable=True)
 
     savings_account = relationship("MemberSavingsAccount", back_populates="savings_transactions")
     transaction_type = relationship("TransactionType", back_populates="savings_transactions")
@@ -438,7 +498,7 @@ class LoansTransaction(Base):
     status = Column(String)
     repayment_starts = Column(DATE)
     repayment_ends = Column(DATE)
-    balance = Column(FLOAT)
+    balance = Column(FLOAT, nullable=True)
 
     loan_account = relationship("MemberLoanAccount", back_populates="loans_transactions")
     transaction_type = relationship("TransactionType", back_populates="loantransact")
@@ -473,7 +533,7 @@ class SharesTransaction(Base):
     narration = Column(String)
     transaction_date = Column(TIMESTAMP)
     shares_acc_id = Column(Integer, ForeignKey("member_share_acc.id"))
-    balance = Column(FLOAT)
+    balance = Column(FLOAT, nullable=True)
 
     shares_accounts = relationship("MemberShareAccount", back_populates="shares_transactions")
     transaction_type = relationship("TransactionType", back_populates="sharetransact")
@@ -508,7 +568,7 @@ class CommodityTransactions(Base):
     commodity_acc_id = Column(Integer, ForeignKey("member_commodity_acc.id"))
     amount_of_commodity = Column(Integer)
     commodities_id = Column(Integer, ForeignKey("commodities.id"))
-    balance = Column(FLOAT)
+    balance = Column(FLOAT, nullable=True)
 
     thethings = relationship("Commodities", back_populates="thingsthe")
     type_nu = relationship("CommoditiesTransactionType", back_populates="nu_type")

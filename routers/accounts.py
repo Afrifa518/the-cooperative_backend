@@ -68,6 +68,44 @@ class CommodityAccount(BaseModel):
     tax_fee: float
 
 
+class SocietyAccounts(BaseModel):
+    account_name: str
+    society_id: int
+    purpose: Optional[str]
+
+
+@router.post("/society/account")
+async def create_society_account(account: SocietyAccounts,
+                                 user: dict = Depends(get_current_user),
+                                 db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    date = datetime.now()
+    openDate = date.strftime("%Y-%m-%d")
+
+    accoun_model = models.SocietyBankAccounts()
+    accoun_model.society_id = account.society_id
+    accoun_model.account_name = account.account_name
+    accoun_model.current_balance = 0.00
+    accoun_model.open_date = openDate
+    accoun_model.purpose = account.purpose
+    accoun_model.opened_by = user.get("id")
+
+    db.add(accoun_model)
+    db.flush()
+    db.commit()
+
+    return "Account Opened"
+
+@router.get("/society/all/{society_id}")
+async def get_savings(society_id: int,
+                      user: dict = Depends(get_current_user),
+                      db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    return db.query(models.SocietyBankAccounts).filter(models.SocietyBankAccounts.society_id == society_id).all()
+
+
 @router.post("/savings")
 async def create_savings(savings: SavingsAccount,
                          user: dict = Depends(get_current_user),
@@ -314,7 +352,6 @@ async def create_member_commodity_account(acc: MemberCommodity,
     member_account.association_member_id = acc.association_member_id
     member_account.member_id = acc.member_id
 
-
     db.add(member_account)
     db.commit()
 
@@ -333,6 +370,7 @@ class StoreCommodities(BaseModel):
     cleaning_fee: bool
     storage_fee: bool
     tax_fee: bool
+
 
 @router.post("/store/commodity")
 async def store_commodity(storage: StoreCommodities,
@@ -361,7 +399,7 @@ async def store_commodity(storage: StoreCommodities,
         .first()
 
     weight = unit.unit_per_kg * storage.total_number
-    tons = weight/1000
+    tons = weight / 1000
 
     cash_value = 0
     # add handling fee
@@ -375,7 +413,6 @@ async def store_commodity(storage: StoreCommodities,
         weight=weight,
         tons=tons
     )
-
 
 
 @router.get("/commodity/{association_type_id}/")

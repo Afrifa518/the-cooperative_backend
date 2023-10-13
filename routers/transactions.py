@@ -35,6 +35,8 @@ class SavingsTransaction(BaseModel):
     Amount: float
     narration: Optional[str]
     savings_acc_id: int
+    transaction_id: Optional[int]
+    balance: Optional[float]
 
 
 class SavingTransaction(BaseModel):
@@ -71,58 +73,72 @@ async def create_transactions_savings_acc(transactSave: SavingsTransaction,
     if user is None:
         raise get_user_exception()
 
-    prev_balance = db.query(models.MemberSavingsAccount).filter(models.MemberSavingsAccount.id == transactSave.savings_acc_id).first()
+    existing_transactions = db.query(models.SavingsTransaction).filter(
+        models.SavingsTransaction.transaction_id == transactSave.transaction_id).first()
+    prev_balance = db.query(models.MemberSavingsAccount).filter(
+        models.MemberSavingsAccount.id == transactSave.savings_acc_id).first()
 
     results = await check_for_stamps_and_cash(member_savings_acc=transactSave.savings_acc_id, user=user, db=db)
 
-    if results.stamp_value:
-        stamp = transactSave.Amount * results.stamp_value
-        transactions_models = models.SavingsTransaction()
-        transactions_models.transactiontype_id = transactSave.transactiontype_id
-        transactions_models.amount = stamp
-        transactions_models.prep_by = user.get("id")
-        transactions_models.narration = transactSave.narration
-        transactions_models.savings_acc_id = transactSave.savings_acc_id
-        transactions_models.transaction_date = datetime.now()
-        transactions_models.balance = prev_balance.current_balance + stamp
+    if existing_transactions:
+        existing_transactions.transactiontype_id = transactSave.transactiontype_id
+        existing_transactions.prep_by = user.get("id")
+        existing_transactions.amount = transactSave.Amount
+        existing_transactions.savings_acc_id = transactSave.savings_acc_id
+        existing_transactions.balance = (
+                                                prev_balance.current_balance - existing_transactions.amount) + transactSave.Amount
+        db.commit()
     else:
-        transactions_models = models.SavingsTransaction()
-        transactions_models.transactiontype_id = transactSave.transactiontype_id
-        transactions_models.amount = transactSave.Amount
-        transactions_models.prep_by = user.get("id")
-        transactions_models.narration = transactSave.narration
-        transactions_models.savings_acc_id = transactSave.savings_acc_id
-        transactions_models.transaction_date = datetime.now()
-        transactions_models.balance = prev_balance.current_balance + transactSave.Amount
+        if results.stamp_value:
+            stamp = transactSave.Amount * results.stamp_value
+            transactions_models = models.SavingsTransaction()
+            transactions_models.transactiontype_id = transactSave.transactiontype_id
+            transactions_models.amount = stamp
+            transactions_models.prep_by = user.get("id")
+            transactions_models.narration = transactSave.narration
+            transactions_models.savings_acc_id = transactSave.savings_acc_id
+            transactions_models.transaction_date = datetime.now()
+            transactions_models.balance = prev_balance.current_balance + stamp
+        else:
+            transactions_models = models.SavingsTransaction()
+            transactions_models.transactiontype_id = transactSave.transactiontype_id
+            transactions_models.amount = transactSave.Amount
+            transactions_models.prep_by = user.get("id")
+            transactions_models.narration = transactSave.narration
+            transactions_models.savings_acc_id = transactSave.savings_acc_id
+            transactions_models.transaction_date = datetime.now()
+            transactions_models.balance = prev_balance.current_balance + transactSave.Amount
 
-    if transactSave.transactiontype_id == 2:
-        association_id = db.query(models.Association) \
-            .select_from(models.Association) \
-            .join(models.AssociationMembers,
-                  models.AssociationMembers.association_id == models.Association.association_id) \
-            .join(models.MemberSavingsAccount,
-                  models.MemberSavingsAccount.association_member_id == models.AssociationMembers.association_members_id) \
-            .filter(models.MemberSavingsAccount.id == transactSave.savings_acc_id) \
-            .first()
-        current_date = datetime.now()
-        today_date = current_date.strftime('%Y-%m-%d')
+        if transactSave.transactiontype_id == 2:
+            association_id = db.query(models.Association) \
+                .select_from(models.Association) \
+                .join(models.AssociationMembers,
+                      models.AssociationMembers.association_id == models.Association.association_id) \
+                .join(models.MemberSavingsAccount,
+                      models.MemberSavingsAccount.association_member_id == models.AssociationMembers.association_members_id) \
+                .filter(models.MemberSavingsAccount.id == transactSave.savings_acc_id) \
+                .first()
+            current_date = datetime.now()
+            today_date = current_date.strftime('%Y-%m-%d')
 
-        today = db.query(models.MomoAccountAssociation) \
-            .filter(models.MomoAccountAssociation.date == today_date,
-                    models.MomoAccountAssociation.association_id == association_id.association_id) \
-            .first()
-        if today:
-            if results.stamp_value:
-                today.momo_bal -= stamp
-            else:
-                today.momo_bal -= transactSave.Amount
-            db.commit()
+            today = db.query(models.MomoAccountAssociation) \
+                .filter(models.MomoAccountAssociation.date == today_date,
+                        models.MomoAccountAssociation.association_id == association_id.association_id) \
+                .first()
+            if today:
+                if results.stamp_value:
+                    today.momo_bal -= stamp
+                else:
+                    today.momo_bal -= transactSave.Amount
+                db.commit()
 
-    db.add(transactions_models)
-    db.flush()
-    db.commit()
-
-    return "Transaction Complete"
+        db.add(transactions_models)
+        db.flush()
+        db.commit()
+    if existing_transactions:
+        return "Changes made"
+    else:
+        return "Transaction Complete"
 
 
 @router.post("/transaction/withdraw")
@@ -133,7 +149,7 @@ async def create_transactions_withdrawals_savings_acc(transactSavee: SavingTrans
         raise get_user_exception()
 
     prev_balance = db.query(models.MemberSavingsAccount).filter(
-        models.MemberSavingsAccount.id == transactSavee.savings_acc_id).first()
+        models.MemberSavingsAccount.id == transactSavee.savings_acc_idd).first()
 
     transactions_models = models.SavingsTransaction()
     transactions_models.transactiontype_id = transactSavee.transactiontype_idd
@@ -151,12 +167,131 @@ async def create_transactions_withdrawals_savings_acc(transactSavee: SavingTrans
     return "Withdraw Successful"
 
 
+class SocietyTransaction(BaseModel):
+    transactiontype_id: int
+    amount: float
+    narration: Optional[str]
+    society_account_id: int
+
+
+@router.post("/transaction/withdraw/society")
+async def create_transactions_society_acc(societyTransaction: SocietyTransaction,
+                                          user: dict = Depends(get_current_user),
+                                          db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    prev_balance = db.query(models.SocietyBankAccounts).filter(
+        models.SocietyBankAccounts.id == societyTransaction.society_account_id).first()
+    if societyTransaction.transactiontype_id == 2:
+        transactions_models = models.SocietyTransactions()
+        transactions_models.transactiontype_id = societyTransaction.transactiontype_id
+        transactions_models.amount = societyTransaction.amount
+        transactions_models.transaction_date = datetime.now()
+        transactions_models.balance = prev_balance.current_balance - societyTransaction.amount
+        transactions_models.prep_by = user.get("id")
+        transactions_models.society_account_id = societyTransaction.society_account_id
+        transactions_models.narration = societyTransaction.narration
+    elif societyTransaction.transactiontype_id == 1:
+        transactions_models = models.SocietyTransactions()
+        transactions_models.transactiontype_id = societyTransaction.transactiontype_id
+        transactions_models.amount = societyTransaction.amount
+        transactions_models.transaction_date = datetime.now()
+        transactions_models.balance = prev_balance.current_balance + societyTransaction.amount
+        transactions_models.prep_by = user.get("id")
+        transactions_models.society_account_id = societyTransaction.society_account_id
+        transactions_models.narration = societyTransaction.narration
+    else:
+        raise HTTPException(status_code=status.WS_1013_TRY_AGAIN_LATER, detail="Transaction was not successful")
+
+    db.add(transactions_models)
+    db.flush()
+    db.commit()
+
+    return "Transaction Successful"
+
+
+@router.get("/transactions/society/{society_acc_id}")
+async def get_society_acc_transactions(society_acc_id: int,
+                                       user: dict = Depends(get_current_user),
+                                       db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    tra = db.query(models.SocietyTransactions.transaction_id,
+                   models.SocietyTransactions.transaction_date,
+                   models.SocietyTransactions.amount,
+                   models.SocietyTransactions.transactiontype_id,
+                   models.SocietyTransactions.narration,
+                   models.SocietyTransactions.balance,
+                   models.Users.username) \
+        .select_from(models.SocietyTransactions) \
+        .join(models.Users,
+              models.SocietyTransactions.prep_by == models.Users.id) \
+        .filter(models.SocietyTransactions.society_account_id == society_acc_id) \
+        .all()
+
+    return tra
+
+
+class SocietTransfer(BaseModel):
+    to_account_id: str
+    amount: float
+    society_account_id: int
+
+
+@router.post("/society/transfer")
+async def transfer_in_society_account(transfer: SocietTransfer,
+                                      user: dict = Depends(get_current_user),
+                                      db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    to_acc = db.query(models.SocietyBankAccounts) \
+        .filter(models.SocietyBankAccounts.id == transfer.to_account_id) \
+        .first()
+    from_acc = db.query(models.SocietyBankAccounts) \
+        .filter(models.SocietyBankAccounts.id == transfer.society_account_id) \
+        .first()
+
+    if transfer.amount <= from_acc.current_balance:
+        transfer_from = models.SocietyTransactions(
+            transactiontype_id=2,
+            amount=transfer.amount,
+            transaction_date=datetime.now(),
+            balance=from_acc.current_balance - transfer.amount,
+            prep_by=user.get("id"),
+            society_account_id=transfer.society_account_id,
+            narration=f"Transferred to: {to_acc.account_name} bank account",
+        )
+        db.add(transfer_from)
+        db.commit()
+
+        transfer_to = models.SocietyTransactions(
+            transactiontype_id=1,
+            amount=transfer.amount,
+            transaction_date=datetime.now(),
+            balance=to_acc.current_balance + transfer.amount,
+            prep_by=user.get("id"),
+            society_account_id=transfer.to_account_id,
+            narration=f"Received from: {from_acc.account_name} bank account",
+        )
+        db.add(transfer_to)
+        db.commit()
+
+        return "Transfer Complete"
+    else:
+        raise insufficient_balance()
+
+
+
+
 # @router.get("/transactions/save/")
 # async def get_savings_acc_transactions(user: dict = Depends(get_current_user),
 #                                        db: Session = Depends(get_db)):
 #     if user is None:
 #         raise get_user_exception()
 #     return db.query(models.SavingsTransaction).all()
+
 
 @router.get("/sform/{member_savings_acc}")
 async def check_for_stamps_and_cash(member_savings_acc: int,
@@ -290,8 +425,7 @@ async def disburse_loan(transaction_id: int = Form(...),
 
     loanTransaction = db.query(models.LoansTransaction) \
         .filter(models.LoansTransaction.transaction_id == transaction_id) \
-
-
+        .first()
     update_data = {
         models.LoansTransaction.status: 'Disbursed',
         models.LoansTransaction.repayment_starts: repayment_starts,
@@ -477,7 +611,7 @@ async def get_info_to_prepare_loan_advise(transaction_id: int,
         "Repayment_Schedule": weekly_payments,
         "Amount_Total": total_amount_per_week,
         "Interest_Total": total_interest_per_week,
-        "Total_Khraa": round(total_amount_per_week + total_interest_per_week , 2)
+        "Total_Khraa": round(total_amount_per_week + total_interest_per_week, 2)
     }
 
 
@@ -966,7 +1100,7 @@ async def transfers_in_savings_account(tranfer: TransferSavings,
         raise insufficient_balance()
 
 
-@router.get("transfer/info/{member_id}")
+@router.get("/transfer/info/{member_id}")
 async def get_info_for_transfer(member_id,
                                 user: dict = Depends(get_current_user),
                                 db: Session = Depends(get_db)):

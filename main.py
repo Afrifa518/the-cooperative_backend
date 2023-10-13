@@ -3,8 +3,12 @@ import models
 from database import engine
 from routers import auth, users, associations, members, accounts, transactions, commodities
 from fastapi.middleware.cors import CORSMiddleware
+# from mangum import Mangum
+
+
 
 app = FastAPI()
+# handler = Mangum(app)
 
 app.add_middleware(
     CORSMiddleware,
