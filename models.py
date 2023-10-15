@@ -348,7 +348,7 @@ class Association(Base):
 
     association_id = Column(Integer, primary_key=True, index=True)
     association_name = Column(VARCHAR, nullable=False)
-    association_type_id = Column(VARCHAR, ForeignKey("associationtype.associationtype_id"))
+    association_type_id = Column(Integer, ForeignKey("associationtype.associationtype_id"))
     community_name = Column(TEXT)
     open_date = Column(DATE)
     facilitator_userid = Column(Integer, ForeignKey("users.id"))
