@@ -57,7 +57,7 @@ class ShareAccount(BaseModel):
 
 class CommodityAccount(BaseModel):
     warehouse: str
-    commodities: Optional[List[int]] = None,
+    commodities: Optional[List[int]] = None
     community: str
     association_type_id: int
     rebagging_fee: float
