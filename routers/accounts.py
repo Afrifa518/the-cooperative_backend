@@ -97,13 +97,23 @@ async def create_society_account(account: SocietyAccounts,
 
     return "Account Opened"
 
+
 @router.get("/society/all/{society_id}")
-async def get_savings(society_id: int,
+async def get_society(society_id: int,
                       user: dict = Depends(get_current_user),
                       db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
     return db.query(models.SocietyBankAccounts).filter(models.SocietyBankAccounts.society_id == society_id).all()
+
+
+@router.get("/society/transfer/all/{society_acc_id}")
+async def get_society_for_transfer(society_acc_id: int,
+                                   user: dict = Depends(get_current_user),
+                                   db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    return db.query(models.SocietyBankAccounts).filter(models.SocietyBankAccounts.id != society_acc_id).all()
 
 
 @router.post("/savings")

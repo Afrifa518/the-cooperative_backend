@@ -27,6 +27,7 @@ class Users(Base):
     nu_nipa = relationship("CommodityTransactions", back_populates="nipa_nu")
     doer = relationship("SocietyBankAccounts", back_populates="use")
     sotra = relationship("SocietyTransactions", back_populates="prepBy")
+    reconchat = relationship("ReconciliationChats", back_populates="fro")
 
 
 class UserInfo(Base):
@@ -369,7 +370,7 @@ class CashAssociationAccount(Base):
     __tablename__ = "cash_association_account"
 
     id = Column(Integer, primary_key=True, index=True)
-    date = Column(String, unique=True)
+    date = Column(DATE)
     cash_savings_bal = Column(FLOAT)
     cash_loans_bal = Column(FLOAT)
     cash_shares_bal = Column(FLOAT)
@@ -385,15 +386,17 @@ class MomoAccountAssociation(Base):
     __tablename__ = "momo_account_association"
 
     id = Column(Integer, primary_key=True, index=True)
-    date = Column(String)
+    date = Column(DATE)
     momo_bal = Column(FLOAT)
     momo_loans_bal = Column(FLOAT)
     momo_shares_bal = Column(FLOAT)
     association_id = Column(Integer, ForeignKey("association.association_id"))
     status = Column(String)
+    button = Column(String)
 
     momo = relationship("Association", back_populates="asoAc")
     ba = relationship("ReconciliationNote", back_populates="mo")
+    conre = relationship("ReconciliationChats", back_populates="recon")
 
 class ReconciliationNote(Base):
     __tablename__ = "reconciliation_note"
@@ -450,6 +453,19 @@ class CommoditiesTransactionType(Base):
     commodity_transact_type = Column(String)
 
     nu_type = relationship("CommodityTransactions", back_populates="type_nu")
+
+
+class ReconciliationChats(Base):
+    __tablename__ = "reconciliation_chats"
+
+    id = Column(Integer, primary_key=True, index=True)
+    from_id = Column(Integer, ForeignKey("users.id"))
+    to_recon_id = Column(Integer, ForeignKey("momo_account_association.id"))
+    message = Column(String, nullable=True)
+
+    fro = relationship("Users", back_populates="reconchat")
+    recon = relationship("MomoAccountAssociation", back_populates="conre")
+
 
 
 class SocietyTransactions(Base):

@@ -234,7 +234,7 @@ async def get_society_acc_transactions(society_acc_id: int,
 
 
 class SocietTransfer(BaseModel):
-    to_account_id: str
+    to_account_id: int
     amount: float
     society_account_id: int
 
