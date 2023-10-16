@@ -183,8 +183,8 @@ async def create_member_and_register_association(association_id: int = Form(...)
                                                  EducationLevel: Optional[str] = Form(None),
                                                  Town: Optional[str] = Form(None),
                                                  ruralOrUrban: Optional[str] = Form(None),
-                                                 user: dict = Depends(get_current_user),
-                                                 db: Session = Depends(get_db)
+                                                 db: Session = Depends(get_db),
+                                                 user: dict = Depends(get_current_user)
                                                  ):
     if user is None:
         raise get_user_exception()
