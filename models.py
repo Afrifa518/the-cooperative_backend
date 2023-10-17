@@ -17,6 +17,7 @@ class Users(Base):
     lastName = Column(String)
     email = Column(String)
     hashed_password = Column(String)
+    role = Column(String)
 
     savings_transactions = relationship("SavingsTransaction", back_populates="prepared_by")
     loans_transactions = relationship("LoansTransaction", back_populates="prepared_by")
@@ -38,7 +39,7 @@ class UserInfo(Base):
     gender = Column(String)
     address = Column(String)
     phone = Column(String)
-    userImage = Column(TEXT)
+    userImage = Column(LargeBinary)
     users_id = Column(Integer, ForeignKey("users.id"))
 
     user = relationship("Users", back_populates="info")
@@ -348,7 +349,7 @@ class Association(Base):
 
     association_id = Column(Integer, primary_key=True, index=True)
     association_name = Column(VARCHAR, nullable=False)
-    association_type_id = Column(VARCHAR, ForeignKey("associationtype.associationtype_id"))
+    association_type_id = Column(Integer, ForeignKey("associationtype.associationtype_id"))
     community_name = Column(TEXT)
     open_date = Column(DATE)
     facilitator_userid = Column(Integer, ForeignKey("users.id"))

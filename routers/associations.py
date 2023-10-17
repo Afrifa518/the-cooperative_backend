@@ -540,33 +540,10 @@ async def get_association_passbook_info_yeah(association_id: int,
                                                             models.CashAssociationAccount.association_id == association_id).first()
 
     yestaday = db.query(models.CashAssociationAccount).filter(
-        models.CashAssociationAccount.association_id == association_id).first()
+        models.CashAssociationAccount.association_id == association_id,
+        models.CashAssociationAccount.date < today).first()
 
-    # saving = db.query(models.MemberSavingsAccount) \
-    #     .join(models.AssociationMembers,
-    #           models.AssociationMembers.association_members_id == models.MemberSavingsAccount.association_member_id) \
-    #     .join(models.Association, models.Association.association_id == models.AssociationMembers.association_id) \
-    #     .filter(models.Association.association_id == association_id) \
-    #     .all()
-    # total = sum(saving.current_balance)
-    # if yestaday is None:
-    #     data["id"] = 0
-    #     data["Starting_Savings"] = 0
-    #     data["Current_Savings"] = 0
-    #     data["Addition_Subtraction_in_Savings"] = 0 + 0
-    #     data["Starting_Loans"] = 0
-    #     data["Current_Loans"] = 0
-    #     data["Addition_Subtraction_in_Loans"] = 0 + 0
-    #     data["Starting_Shares"] = 0
-    #     data["Current_Shares"] = 0
-    #     data["Addition_Subtraction_in_Shares"] = 0 + 0
-    #     data["Starting_Withdraws"] = 0
-    #     data["Current_Withdraws"] = 0
-    #     data["Addition_Subtraction_in_Withdraws"] = 0 + 0
-    #     data["Starting_Transfers"] = 0
-    #     data["Current_Transfers"] = 0
-    #     data["Addition_Subtraction_in_Transfers"] = 0 + 0
-    # else:
+
 
     data = {}
 
@@ -1122,6 +1099,7 @@ async def get_reconciled_note(momo_id: int,
         .join(models.Users,
               models.Users.id == models.ReconciliationChats.from_id) \
         .filter(models.ReconciliationChats.to_recon_id == momo_id) \
+        .order_by(models.ReconciliationChats.id) \
         .all()
 
     if nt:
@@ -1300,7 +1278,7 @@ async def get_cash_account_balance_society(society_id: int,
         caa.withdrawal_value,
         maa.status,
         maa.id,
-        caa.id,
+        # caa.id,
         # caa.association_id.label('cash_asso'),
         # maa.association_id.label('momo_asso'),
         models.Association.association_name,
@@ -1352,7 +1330,7 @@ async def get_filterd_cash_account_balance_society(society: Filterd,
         caa.withdrawal_value,
         maa.status,
         maa.id,
-        caa.id,
+        # caa.id,
         # caa.association_id.label('cash_asso'),
         # maa.association_id.label('momo_asso'),
         models.Association.association_name,

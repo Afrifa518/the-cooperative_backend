@@ -426,12 +426,20 @@ async def disburse_loan(transaction_id: int = Form(...),
     loanTransaction = db.query(models.LoansTransaction) \
         .filter(models.LoansTransaction.transaction_id == transaction_id) \
         .first()
-    update_data = {
-        models.LoansTransaction.status: 'Disbursed',
-        models.LoansTransaction.repayment_starts: repayment_starts,
-        models.LoansTransaction.repayment_ends: repayment_end_date,
-        models.LoansTransaction.balance: loanTransaction.amount + loanTransaction.balance
-    }
+    if loanTransaction.balance:
+        update_data = {
+            models.LoansTransaction.status: 'Disbursed',
+            models.LoansTransaction.repayment_starts: repayment_starts,
+            models.LoansTransaction.repayment_ends: repayment_end_date,
+            models.LoansTransaction.balance: loanTransaction.amount + loanTransaction.balance
+        }
+    else:
+        update_data = {
+            models.LoansTransaction.status: 'Disbursed',
+            models.LoansTransaction.repayment_starts: repayment_starts,
+            models.LoansTransaction.repayment_ends: repayment_end_date,
+            models.LoansTransaction.balance: loanTransaction.amount
+        }
 
     updated_transaction = db.query(models.LoansTransaction) \
         .filter(models.LoansTransaction.transaction_id == transaction_id) \
