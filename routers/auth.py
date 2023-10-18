@@ -24,6 +24,7 @@ class CreateUser(BaseModel):
     lastName: str
     email: str
     hashed_password: str
+    role: str
 
 
 bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -88,9 +89,9 @@ async def get_current_user(token: str = Depends(oauth2_bearer)):
     except JWTError:
         raise get_user_exception()
 
+
 @router.get("/refresh")
 async def refresh_access_token(current_user: dict = Depends(get_current_user)):
-
     user_id = current_user["id"]
     username = current_user["username"]
     token_expires = timedelta(hours=7)
@@ -100,19 +101,34 @@ async def refresh_access_token(current_user: dict = Depends(get_current_user)):
 
 
 @router.post("/create/user")
-async def create_new_user(create_user: CreateUser, db: Session = Depends(get_db)):
+async def create_new_user(create_user: CreateUser,
+                          db: Session = Depends(get_db)):
     create_user_model = models.Users()
     create_user_model.username = create_user.username
     create_user_model.firstName = create_user.firstName
     create_user_model.middleName = create_user.middleName
     create_user_model.lastName = create_user.lastName
     create_user_model.email = create_user.email
+    create_user_model.role = create_user.role
 
     hash_password = get_password_hash(create_user.hashed_password)
 
     create_user_model.hashed_password = hash_password
     db.add(create_user_model)
     db.commit()
+    # return create_user_model
+
+    add_details = models.UserInfo(
+        dob=None,
+        gender=None,
+        address=None,
+        phone=None,
+        userImage=None,
+        users_id=create_user_model.id,
+    )
+    db.add(add_details)
+    db.commit()
+
     return "New User Added"
 
 

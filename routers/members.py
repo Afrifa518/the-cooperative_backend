@@ -96,31 +96,31 @@ class AssociationMembers(BaseModel):
 
 @router.post("/register/individual")
 async def register_single_member(firstname: str = Form(...),
-                                middlename: Optional[str] = Form(None),
-                                lastname: str = Form(...),
-                                dob: Optional[str] = Form(None),
-                                gender: str = Form(...),
-                                phone: str = Form(...),
-                                otherPhone: Optional[str] = Form(None),
-                                address: str = Form(...),
-                                otherAddress: Optional[str] = Form(None),
-                                ghCardNumber: str = Form(...),
-                                nextOfKin: Optional[str] = Form(None),
-                                ghCardImage: Optional[UploadFile] = None,
-                                memberImage = File(...),
-                                otherName: Optional[str] = Form(None),
-                                commonname: Optional[str] = Form(None),
-                                MaritalStatus: Optional[str] = Form(None),
-                                EducationLevel: Optional[str] = Form(None),
-                                Town: Optional[str] = Form(None),
-                                ruralOrUrban: Optional[str] = Form(None),
-                                db: Session = Depends(get_db),
-                                user: dict = Depends(get_current_user)
+                                 middlename: Optional[str] = Form(None),
+                                 lastname: str = Form(...),
+                                 dob: Optional[str] = Form(None),
+                                 gender: str = Form(...),
+                                 phone: str = Form(...),
+                                 otherPhone: Optional[str] = Form(None),
+                                 address: str = Form(...),
+                                 otherAddress: Optional[str] = Form(None),
+                                 ghCardNumber: str = Form(...),
+                                 nextOfKin: Optional[str] = Form(None),
+                                 ghCardImage: Optional[UploadFile] = None,
+                                 memberImage=File(...),
+                                 otherName: Optional[str] = Form(None),
+                                 commonname: Optional[str] = Form(None),
+                                 MaritalStatus: Optional[str] = Form(None),
+                                 EducationLevel: Optional[str] = Form(None),
+                                 Town: Optional[str] = Form(None),
+                                 ruralOrUrban: Optional[str] = Form(None),
+                                 db: Session = Depends(get_db),
+                                 user: dict = Depends(get_current_user)
                                  ):
     if user is None:
         raise get_user_exception()
 
-    if db.query(models.Members).filter_by(ghcardnumber = ghCardNumber).first():
+    if db.query(models.Members).filter_by(ghcardnumber=ghCardNumber).first():
         raise HTTPException(status_code=400, detail="Card Number already exists")
 
     if isinstance(ghCardImage, str):
@@ -189,7 +189,7 @@ async def create_member_and_register_association(association_id: int = Form(...)
     if user is None:
         raise get_user_exception()
 
-    if db.query(models.Members).filter_by(ghcardnumber = ghCardNumber).first():
+    if db.query(models.Members).filter_by(ghcardnumber=ghCardNumber).first():
         raise HTTPException(status_code=400, detail="Card Number already exists")
 
     if isinstance(ghCardImage, str):
@@ -365,8 +365,9 @@ def default_registration_account(member_Id: int,
     except Exception as e:
         return {"error": str(e)}
 
+
 def default_registration_account_individuals(member_Id: int,
-                                            db: Session = Depends(get_db)):
+                                             db: Session = Depends(get_db)):
     current_date = datetime.now().strftime("%Y-%m-%d")
     try:
         account_coop_model = models.MemberSavingsAccount(

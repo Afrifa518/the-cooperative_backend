@@ -34,7 +34,7 @@ class Users(Base):
 class UserInfo(Base):
     __tablename__ = "user_info"
 
-    userInfo_id = Column(Integer, primary_key=True, index=True)
+    userinfo_id = Column(Integer, primary_key=True, index=True)
     dob = Column(DATE)
     gender = Column(String)
     address = Column(String)
