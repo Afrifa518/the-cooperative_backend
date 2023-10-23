@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 import models
 from database import engine
-from routers import auth, users, associations, members, accounts, transactions, commodities
+from routers import auth, users, associations, members, accounts, transactions, commodities, permissions
 from fastapi.middleware.cors import CORSMiddleware
 # from mangum import Mangum
 
@@ -26,3 +26,4 @@ app.include_router(members.router)
 app.include_router(accounts.router)
 app.include_router(transactions.router)
 app.include_router(commodities.router)
+app.include_router(permissions.router)

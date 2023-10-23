@@ -6,7 +6,7 @@ from sqlalchemy import desc, not_, func, select, union_all, case, literal_column
 sys.path.append("../..")
 
 from typing import Optional
-from fastapi import Depends, HTTPException, APIRouter
+from fastapi import Depends, HTTPException, APIRouter, Form
 import models
 from database import engine, SessionLocal
 from sqlalchemy.orm import Session, aliased
@@ -91,7 +91,22 @@ async def create_society(society: str,
     db.add(mod)
     db.commit()
 
+
+
     return "New Society Created"
+
+
+@router.post("/update/society")
+async def change_society_name(society_id: int = Form(...),
+                              new_name: str = Form(...),
+                              user: dict = Depends(get_current_user),
+                              db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    update_data = {models.Society.society: new_name}
+    db.query(models.Society).filter(models.Society.id == society_id).update(update_data)
+    db.commit()
+    return "Updated Successfully"
 
 
 @router.post("/create")
@@ -542,8 +557,6 @@ async def get_association_passbook_info_yeah(association_id: int,
     yestaday = db.query(models.CashAssociationAccount).filter(
         models.CashAssociationAccount.association_id == association_id,
         models.CashAssociationAccount.date < today).first()
-
-
 
     data = {}
 
@@ -1299,7 +1312,7 @@ async def get_cash_account_balance_society(society_id: int,
     ).all()
 
     return {"Data": result}
- 
+
 
 class Filterd(BaseModel):
     society_id: int

@@ -137,6 +137,36 @@ async def create_savings(savings: SavingsAccount,
     return "Setup Complete"
 
 
+class EditSavingsAccount(BaseModel):
+    id: int
+    account_name: str
+    is_refundable: bool
+    medium_of_exchange: str
+    interest_over_a_year: Optional[float]
+    stamp_value: Optional[str]
+
+
+@router.post("/savings/edit")
+async def edit_savings(savings: EditSavingsAccount,
+                       user: dict = Depends(get_current_user),
+                       db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    update_data = {
+        models.SavingsAccount.account_name: savings.account_name,
+        models.SavingsAccount.is_refundable: savings.is_refundable,
+        models.SavingsAccount.medium_of_exchange: savings.medium_of_exchange,
+        models.SavingsAccount.interest_over_a_year: savings.interest_over_a_year,
+        models.SavingsAccount.stamp_value: savings.stamp_value
+    }
+
+    db.query(models.SavingsAccount).filter(models.SavingsAccount.id == savings.id).update(update_data)
+    db.commit()
+
+    return "Edit Complete"
+
+
 class MemberSavings(BaseModel):
     savings_id: int
     association_member_id: Optional[int]

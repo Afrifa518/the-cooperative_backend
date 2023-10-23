@@ -2,30 +2,20 @@ import sys
 
 sys.path.append("../..")
 
-from fastapi import Depends, HTTPException, status, APIRouter
+from fastapi import Depends, HTTPException, status, APIRouter, Form
 from pydantic import BaseModel
 from typing import Optional
 import models
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 from database import SessionLocal, engine
+from sqlalchemy import desc
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
 
 SECRET_KEY = "JGUGVjhbhFY5R655DF65r7RFTYCj6Tytfgchfut6"
 ALGORITHM = "HS256"
-
-
-class CreateUser(BaseModel):
-    username: str
-    firstName: str
-    middleName: Optional[str]
-    lastName: str
-    email: str
-    hashed_password: str
-    role: str
-
 
 bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -100,31 +90,54 @@ async def refresh_access_token(current_user: dict = Depends(get_current_user)):
     return {"token": new_token}
 
 
+@router.get("/all/roles")
+async def get_all_roles(user: dict = Depends(get_current_user),
+                        db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    return db.query(models.UserRoles).all()
+
+
 @router.post("/create/user")
-async def create_new_user(create_user: CreateUser,
+async def create_new_user(username: str = Form(...),
+                          firstName: str = Form(...),
+                          middleName: Optional[str] = Form(None),
+                          lastName: str = Form(...),
+                          email: str = Form(...),
+                          hashed_password: str = Form(...),
+                          dob: str = Form(...),
+                          gender: str = Form(...),
+                          address: Optional[str] = Form(None),
+                          phone: Optional[str] = Form(None),
+                          role_id: int = Form(...),
+                          user: dict = Depends(get_current_user),
                           db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
     create_user_model = models.Users()
-    create_user_model.username = create_user.username
-    create_user_model.firstName = create_user.firstName
-    create_user_model.middleName = create_user.middleName
-    create_user_model.lastName = create_user.lastName
-    create_user_model.email = create_user.email
-    create_user_model.role = create_user.role
-
-    hash_password = get_password_hash(create_user.hashed_password)
-
+    create_user_model.username = username
+    create_user_model.firstName = firstName
+    create_user_model.middleName = middleName
+    create_user_model.lastName = lastName
+    create_user_model.email = email
+    create_user_model.role_id = role_id
+    create_user_model.date_joined = datetime.now()
+    hash_password = get_password_hash(hashed_password)
     create_user_model.hashed_password = hash_password
+
     db.add(create_user_model)
     db.commit()
-    # return create_user_model
+
+    new_person = db.query(models.Users).order_by(desc(models.Users.id)).first()
 
     add_details = models.UserInfo(
-        dob=None,
-        gender=None,
-        address=None,
-        phone=None,
+        dob=dob,
+        gender=gender,
+        address=address,
+        phone=phone,
         userImage=None,
-        users_id=create_user_model.id,
+        users_id=new_person.id,
     )
     db.add(add_details)
     db.commit()
@@ -143,8 +156,10 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     token = create_access_token(user.username,
                                 user.id,
                                 expires_delta=token_expires)
+    role = db.query(models.UserRoles).join(models.Users, models.Users.role_id == models.UserRoles.id).filter(
+        models.Users.id == user.id).first()
 
-    return {"token": token}
+    return {"token": token, "role": role.id}
 
 
 def token_exception():

@@ -17,7 +17,8 @@ class Users(Base):
     lastName = Column(String)
     email = Column(String)
     hashed_password = Column(String)
-    role = Column(String)
+    role_id = Column(Integer, ForeignKey("user_roles.id"))
+    date_joined = Column(TIMESTAMP)
 
     savings_transactions = relationship("SavingsTransaction", back_populates="prepared_by")
     loans_transactions = relationship("LoansTransaction", back_populates="prepared_by")
@@ -29,6 +30,7 @@ class Users(Base):
     doer = relationship("SocietyBankAccounts", back_populates="use")
     sotra = relationship("SocietyTransactions", back_populates="prepBy")
     reconchat = relationship("ReconciliationChats", back_populates="fro")
+    rollers = relationship("UserRoles", back_populates="users_role")
 
 
 class UserInfo(Base):
@@ -43,6 +45,74 @@ class UserInfo(Base):
     users_id = Column(Integer, ForeignKey("users.id"))
 
     user = relationship("Users", back_populates="info")
+
+
+class UserRoles(Base):
+    __tablename__ = "user_roles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    role_name = Column(String)
+    create_member = Column(BOOLEAN, nullable=True)
+    update_member = Column(BOOLEAN)
+    delete_member = Column(BOOLEAN)
+    view_member = Column(BOOLEAN)
+    create_association = Column(BOOLEAN)
+    update_association = Column(BOOLEAN)
+    view_association = Column(BOOLEAN)
+    delete_association = Column(BOOLEAN)
+    create_society = Column(BOOLEAN)
+    update_society = Column(BOOLEAN)
+    view_society = Column(BOOLEAN)
+    delete_society = Column(BOOLEAN)
+    create_association_type = Column(BOOLEAN)
+    update_association_type = Column(BOOLEAN)
+    view_association_type = Column(BOOLEAN)
+    delete_association_type = Column(BOOLEAN)
+    create_savings_transactions = Column(BOOLEAN)
+    update_savings_transactions = Column(BOOLEAN)
+    view_savings_transactions = Column(BOOLEAN)
+    delete_savings_transactions = Column(BOOLEAN)
+    request_loan_transactions = Column(BOOLEAN)
+    update_loan_request = Column(BOOLEAN)
+    view_loan_transactions = Column(BOOLEAN)
+    delete_loan_transactions = Column(BOOLEAN)
+    download_loan_advise = Column(BOOLEAN)
+    approve_loan_requests = Column(BOOLEAN)
+    disburse_approved_loans = Column(BOOLEAN)
+    create_shares_transactions = Column(BOOLEAN)
+    view_share_transactions = Column(BOOLEAN)
+    download_share_cert = Column(BOOLEAN)
+    delete_share_transactions = Column(BOOLEAN)
+    view_association_passbook = Column(BOOLEAN)
+    view_association_momo_account = Column(BOOLEAN)
+    set_association_momo_bal = Column(BOOLEAN)
+    view_society_account = Column(BOOLEAN)
+    view_society_reconciliatio_form = Column(BOOLEAN)
+    reconcile_balances = Column(BOOLEAN)
+    view_bank_accounts = Column(BOOLEAN)
+    create_bank_accounts = Column(BOOLEAN)
+    create_bank_transactions = Column(BOOLEAN)
+    view_bank_transactions = Column(BOOLEAN)
+    update_bank_transactions = Column(BOOLEAN)
+    delete_bank_transactions = Column(BOOLEAN)
+    create_savings_account = Column(BOOLEAN)
+    update_savings_account = Column(BOOLEAN)
+    delete_savings_account = Column(BOOLEAN)
+    create_loan_account = Column(BOOLEAN)
+    update_loan_account = Column(BOOLEAN)
+    delete_loan_account = Column(BOOLEAN)
+    create_share_account = Column(BOOLEAN)
+    update_share_account = Column(BOOLEAN)
+    delete_share_account = Column(BOOLEAN)
+    create_warehouse = Column(BOOLEAN),
+    create_commodity = Column(BOOLEAN),
+    view_savings_account = Column(BOOLEAN),
+    view_loans_account = Column(BOOLEAN),
+    view_shares_account = Column(BOOLEAN),
+    view_commodity_account = Column(BOOLEAN),
+    view_warehouse = Column(BOOLEAN),
+
+    users_role = relationship("Users", back_populates="rollers")
 
 
 class Members(Base):
@@ -331,8 +401,6 @@ class SocietyBankAccounts(Base):
     acsotra = relationship("SocietyTransactions", back_populates="trasoac")
 
 
-
-
 class AssociationTypeCommodities(Base):
     __tablename__ = "association_type_commodities"
 
@@ -398,6 +466,7 @@ class MomoAccountAssociation(Base):
     momo = relationship("Association", back_populates="asoAc")
     ba = relationship("ReconciliationNote", back_populates="mo")
     conre = relationship("ReconciliationChats", back_populates="recon")
+
 
 class ReconciliationNote(Base):
     __tablename__ = "reconciliation_note"
@@ -468,7 +537,6 @@ class ReconciliationChats(Base):
     recon = relationship("MomoAccountAssociation", back_populates="conre")
 
 
-
 class SocietyTransactions(Base):
     __tablename__ = "society_transactions"
 
@@ -484,6 +552,7 @@ class SocietyTransactions(Base):
     prepBy = relationship("Users", back_populates="sotra")
     sotype = relationship("TransactionType", back_populates="tpytra")
     trasoac = relationship("SocietyBankAccounts", back_populates="acsotra")
+
 
 class SavingsTransaction(Base):
     __tablename__ = "savings_transactions"
