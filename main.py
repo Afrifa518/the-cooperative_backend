@@ -15,7 +15,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
     allow_credentials=True,
-    allow_origins=["http://localhost:3000"])
+    allow_origins=["https://the-cooperative-frontend-hng8yxl60-afrifa518s-projects.vercel.app/"])
+    # ["http://localhost:3000"])
 
 models.Base.metadata.create_all(bind=engine)
 
