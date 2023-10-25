@@ -166,6 +166,16 @@ async def edit_savings(savings: EditSavingsAccount,
 
     return "Edit Complete"
 
+@router.get("/savings/details/{account_id}")
+async def get_one_savings_account_details(account_id: int,
+                                          user: dict = Depends(get_current_user),
+                                          db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    rest = db.query(models.SavingsAccount).filter(models.SavingsAccount.id == account_id).first()
+
+    return {"Account_Details": rest}
+
 
 class MemberSavings(BaseModel):
     savings_id: int

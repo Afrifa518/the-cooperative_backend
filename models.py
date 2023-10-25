@@ -104,13 +104,13 @@ class UserRoles(Base):
     create_share_account = Column(BOOLEAN)
     update_share_account = Column(BOOLEAN)
     delete_share_account = Column(BOOLEAN)
-    create_warehouse = Column(BOOLEAN),
-    create_commodity = Column(BOOLEAN),
-    view_savings_account = Column(BOOLEAN),
-    view_loans_account = Column(BOOLEAN),
-    view_shares_account = Column(BOOLEAN),
-    view_commodity_account = Column(BOOLEAN),
-    view_warehouse = Column(BOOLEAN),
+    create_warehouse = Column(BOOLEAN)
+    create_commodity = Column(BOOLEAN)
+    view_savings_account = Column(BOOLEAN)
+    view_loans_account = Column(BOOLEAN)
+    view_shares_account = Column(BOOLEAN)
+    view_commodity_account = Column(BOOLEAN)
+    view_warehouse = Column(BOOLEAN)
 
     users_role = relationship("Users", back_populates="rollers")
 
