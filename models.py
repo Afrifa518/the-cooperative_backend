@@ -1,8 +1,5 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, LargeBinary, UniqueConstraint
-from sqlalchemy.dialects.postgresql import (
-    BOOLEAN, TIMESTAMP,
-    TEXT, VARCHAR, DATE, FLOAT
-)
+from sqlalchemy import Column, Integer, String, ForeignKey, LargeBinary, UniqueConstraint, Boolean, DateTime, Date, \
+    Float
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -18,7 +15,7 @@ class Users(Base):
     email = Column(String)
     hashed_password = Column(String)
     role_id = Column(Integer, ForeignKey("user_roles.id"))
-    date_joined = Column(TIMESTAMP)
+    date_joined = Column(DateTime)
 
     savings_transactions = relationship("SavingsTransaction", back_populates="prepared_by")
     loans_transactions = relationship("LoansTransaction", back_populates="prepared_by")
@@ -31,20 +28,66 @@ class Users(Base):
     sotra = relationship("SocietyTransactions", back_populates="prepBy")
     reconchat = relationship("ReconciliationChats", back_populates="fro")
     rollers = relationship("UserRoles", back_populates="users_role")
+    account = relationship("UserAccount", back_populates="user")
 
 
 class UserInfo(Base):
     __tablename__ = "user_info"
 
     userinfo_id = Column(Integer, primary_key=True, index=True)
-    dob = Column(DATE)
+    dob = Column(Date)
     gender = Column(String)
     address = Column(String)
     phone = Column(String)
     userImage = Column(LargeBinary)
     users_id = Column(Integer, ForeignKey("users.id"))
+    marital_status = Column(String)
+    sinn_number = Column(String)
+    basic_salary = Column(Float)
+    bank_name = Column(String)
+    account_number = Column(Integer)
+    account_name = Column(String)
 
     user = relationship("Users", back_populates="info")
+
+
+class UserAccount(Base):
+    __tablename__ = "user_account"
+
+    user_account_id = Column(Integer, primary_key=True, index=True)
+    current_balance = Column(Float)
+    user_id = Column(Integer, ForeignKey("users.id"))
+
+    user = relationship("Users", back_populates="account")
+    user_account_transactions = relationship("UserAccountTransactions", back_populates="user_account")
+
+
+class UserAccountTransactions(Base):
+    __tablename__ = "user_account_transactions"
+
+    transaction_id = Column(Integer, primary_key=True, index=True)
+    user_account_id = Column(Integer, ForeignKey("user_account.user_account_id"))
+    amount = Column(Float)
+    transaction_type_id = Column(Integer, ForeignKey("transaction_type.transactype_id"))
+    request_date = Column(DateTime)
+    disburse_date = Column(DateTime)
+    narration = Column(String)
+    balance = Column(Float)
+    status = Column(String)
+    message_id = Column(Integer, ForeignKey("approval_message.id"))
+
+    user_account = relationship("UserAccount", back_populates="user_account_transactions")
+    transaction_type = relationship("TransactionType", back_populates="user_account_transactions")
+    approval_message = relationship("ApprovalMessage", back_populates="user_account_transactions")
+
+
+class ApprovalMessage(Base):
+    __tablename__ = "approval_message"
+
+    id = Column(Integer, primary_key=True, index=True)
+    message = Column(String)
+
+    user_account_transactions = relationship("UserAccountTransactions", back_populates="approval_message")
 
 
 class UserRoles(Base):
@@ -52,65 +95,69 @@ class UserRoles(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     role_name = Column(String)
-    create_member = Column(BOOLEAN, nullable=True)
-    update_member = Column(BOOLEAN)
-    delete_member = Column(BOOLEAN)
-    view_member = Column(BOOLEAN)
-    create_association = Column(BOOLEAN)
-    update_association = Column(BOOLEAN)
-    view_association = Column(BOOLEAN)
-    delete_association = Column(BOOLEAN)
-    create_society = Column(BOOLEAN)
-    update_society = Column(BOOLEAN)
-    view_society = Column(BOOLEAN)
-    delete_society = Column(BOOLEAN)
-    create_association_type = Column(BOOLEAN)
-    update_association_type = Column(BOOLEAN)
-    view_association_type = Column(BOOLEAN)
-    delete_association_type = Column(BOOLEAN)
-    create_savings_transactions = Column(BOOLEAN)
-    update_savings_transactions = Column(BOOLEAN)
-    view_savings_transactions = Column(BOOLEAN)
-    delete_savings_transactions = Column(BOOLEAN)
-    request_loan_transactions = Column(BOOLEAN)
-    update_loan_request = Column(BOOLEAN)
-    view_loan_transactions = Column(BOOLEAN)
-    delete_loan_transactions = Column(BOOLEAN)
-    download_loan_advise = Column(BOOLEAN)
-    approve_loan_requests = Column(BOOLEAN)
-    disburse_approved_loans = Column(BOOLEAN)
-    create_shares_transactions = Column(BOOLEAN)
-    view_share_transactions = Column(BOOLEAN)
-    download_share_cert = Column(BOOLEAN)
-    delete_share_transactions = Column(BOOLEAN)
-    view_association_passbook = Column(BOOLEAN)
-    view_association_momo_account = Column(BOOLEAN)
-    set_association_momo_bal = Column(BOOLEAN)
-    view_society_account = Column(BOOLEAN)
-    view_society_reconciliatio_form = Column(BOOLEAN)
-    reconcile_balances = Column(BOOLEAN)
-    view_bank_accounts = Column(BOOLEAN)
-    create_bank_accounts = Column(BOOLEAN)
-    create_bank_transactions = Column(BOOLEAN)
-    view_bank_transactions = Column(BOOLEAN)
-    update_bank_transactions = Column(BOOLEAN)
-    delete_bank_transactions = Column(BOOLEAN)
-    create_savings_account = Column(BOOLEAN)
-    update_savings_account = Column(BOOLEAN)
-    delete_savings_account = Column(BOOLEAN)
-    create_loan_account = Column(BOOLEAN)
-    update_loan_account = Column(BOOLEAN)
-    delete_loan_account = Column(BOOLEAN)
-    create_share_account = Column(BOOLEAN)
-    update_share_account = Column(BOOLEAN)
-    delete_share_account = Column(BOOLEAN)
-    create_warehouse = Column(BOOLEAN)
-    create_commodity = Column(BOOLEAN)
-    view_savings_account = Column(BOOLEAN)
-    view_loans_account = Column(BOOLEAN)
-    view_shares_account = Column(BOOLEAN)
-    view_commodity_account = Column(BOOLEAN)
-    view_warehouse = Column(BOOLEAN)
+    create_member = Column(Boolean, nullable=True)
+    update_member = Column(Boolean)
+    delete_member = Column(Boolean)
+    view_member = Column(Boolean)
+    create_association = Column(Boolean)
+    update_association = Column(Boolean)
+    view_association = Column(Boolean)
+    delete_association = Column(Boolean)
+    create_society = Column(Boolean)
+    update_society = Column(Boolean)
+    view_society = Column(Boolean)
+    delete_society = Column(Boolean)
+    create_association_type = Column(Boolean)
+    update_association_type = Column(Boolean)
+    view_association_type = Column(Boolean)
+    delete_association_type = Column(Boolean)
+    create_savings_transactions = Column(Boolean)
+    update_savings_transactions = Column(Boolean)
+    view_savings_transactions = Column(Boolean)
+    delete_savings_transactions = Column(Boolean)
+    request_loan_transactions = Column(Boolean)
+    update_loan_request = Column(Boolean)
+    view_loan_transactions = Column(Boolean)
+    delete_loan_transactions = Column(Boolean)
+    download_loan_advise = Column(Boolean)
+    approve_loan_requests = Column(Boolean)
+    disburse_approved_loans = Column(Boolean)
+    create_shares_transactions = Column(Boolean)
+    view_share_transactions = Column(Boolean)
+    download_share_cert = Column(Boolean)
+    delete_share_transactions = Column(Boolean)
+    view_association_passbook = Column(Boolean)
+    view_association_momo_account = Column(Boolean)
+    set_association_momo_bal = Column(Boolean)
+    view_society_account = Column(Boolean)
+    view_society_reconciliatio_form = Column(Boolean)
+    reconcile_balances = Column(Boolean)
+    view_bank_accounts = Column(Boolean)
+    create_bank_accounts = Column(Boolean)
+    create_bank_transactions = Column(Boolean)
+    view_bank_transactions = Column(Boolean)
+    update_bank_transactions = Column(Boolean)
+    delete_bank_transactions = Column(Boolean)
+    create_savings_account = Column(Boolean)
+    update_savings_account = Column(Boolean)
+    delete_savings_account = Column(Boolean)
+    create_loan_account = Column(Boolean)
+    update_loan_account = Column(Boolean)
+    delete_loan_account = Column(Boolean)
+    create_share_account = Column(Boolean)
+    update_share_account = Column(Boolean)
+    delete_share_account = Column(Boolean)
+    create_warehouse = Column(Boolean)
+    create_commodity = Column(Boolean)
+    view_savings_account = Column(Boolean)
+    view_loans_account = Column(Boolean)
+    view_shares_account = Column(Boolean)
+    view_commodity_account = Column(Boolean)
+    view_warehouse = Column(Boolean)
+    view_expense = Column(Boolean)
+    expense_approve = Column(Boolean)
+    expense_disbures = Column(Boolean)
+    view_rejected = Column(Boolean)
 
     users_role = relationship("Users", back_populates="rollers")
 
@@ -122,7 +169,7 @@ class Members(Base):
     firstname = Column(String)
     middlename = Column(String)
     lastname = Column(String)
-    dob = Column(DATE)
+    dob = Column(Date)
     gender = Column(String)
     phone = Column(String)
     otherPhone = Column(String)
@@ -156,10 +203,10 @@ class SavingsAccount(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     account_name = Column(String)
-    is_refundable = Column(BOOLEAN)
+    is_refundable = Column(Boolean)
     medium_of_exchange = Column(String)
-    interest_over_a_year = Column(FLOAT)
-    stamp_value = Column(FLOAT)
+    interest_over_a_year = Column(Float)
+    stamp_value = Column(Float)
 
     okihr = relationship("MemberSavingsAccount", back_populates="save")
 
@@ -169,11 +216,11 @@ class LoanAccount(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     account_name = Column(String)
-    interest_amt = Column(FLOAT)
-    application_fee = Column(FLOAT)
-    proccessing_fee = Column(FLOAT)
-    min_amt = Column(FLOAT)
-    max_amt = Column(FLOAT)
+    interest_amt = Column(Float)
+    application_fee = Column(Float)
+    proccessing_fee = Column(Float)
+    min_amt = Column(Float)
+    max_amt = Column(Float)
 
     member_loan = relationship("MemberLoanAccount", back_populates="loan")
 
@@ -183,8 +230,8 @@ class ShareAccount(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     account_name = Column(String)
-    share_value = Column(FLOAT)
-    interest_amt = Column(FLOAT)
+    share_value = Column(Float)
+    interest_amt = Column(Float)
 
     shareme = relationship("MemberShareAccount", back_populates="share")
 
@@ -198,7 +245,7 @@ class Commodities(Base):
     tracked = relationship("CommodityValueTrack", back_populates="tracker")
     thingsthe = relationship("CommodityTransactions", back_populates="thethings")
     ankasa_com = relationship("MemberCommodityAccCommodities", back_populates="com_ankasa")
-    type_commodity = relationship("AssociationTypeCommodities", back_populates="commodity_type")
+    type_commodity = relationship("SocietyCommodities", back_populates="commodity_type")
     redarg = relationship("CommodityGradeValues", back_populates="grader")
     ytidommoc = relationship("CommodityUnitsJoin", back_populates="commodity")
     commod = relationship("CommodityAccountCommodities", back_populates="accommo")
@@ -230,7 +277,7 @@ class CommodityGradeValues(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     grade = Column(String)
-    price_per_kg = Column("price/kg", FLOAT)
+    price_per_kg = Column("price/kg", Float)
     commodities_id = Column(Integer, ForeignKey("commodities.id"))
 
     grader = relationship("Commodities", back_populates="redarg")
@@ -242,15 +289,18 @@ class CommodityAccount(Base):
     id = Column(Integer, primary_key=True, index=True)
     warehouse = Column(String)
     community = Column(String)
-    association_type_id = Column(Integer, ForeignKey("associationtype.associationtype_id"))
-    rebagging_fee = Column(FLOAT)
-    treatment_fee = Column(FLOAT)
-    destoning_fee = Column(FLOAT)
-    cleaning_fee = Column(FLOAT)
-    storage_fee = Column(FLOAT)
-    tax_fee = Column(FLOAT)
+    society_id = Column(Integer, ForeignKey("society.id"))
+    rebagging_fee = Column(Float)
+    stacking_fee = Column(Float)
+    destoning_fee = Column(Float)
+    cleaning_fee = Column(Float)
+    storage_fee = Column(Float)
+    tax_fee = Column(Float)
+    stitching_fee = Column(Float)
+    loading_fee = Column(Float)
+    empty_sack_cost_fee = Column(Float)
 
-    assohouse = relationship("AssociationType", back_populates="watertank")
+    assohouse = relationship("Society", back_populates="watertank")
     member_commodity = relationship("MemberCommodityAccount", back_populates="commodity")
     tnuota = relationship("CommodityAccountCommodities", back_populates="account")
 
@@ -270,8 +320,8 @@ class CommodityValueTrack(Base):
     __tablename__ = 'commodity_value_track'
     id = Column(Integer, primary_key=True, index=True)
     commodities_id = Column(Integer, ForeignKey("commodities.id"))
-    date = Column(TIMESTAMP)
-    new_price_per_kg = Column(FLOAT)
+    date = Column(DateTime)
+    new_price_per_kg = Column(Float)
     grade = Column(String)
     new_units_per_kg = Column("new_units/kg", Integer)
 
@@ -283,8 +333,8 @@ class MemberSavingsAccount(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     savings_id = Column(Integer, ForeignKey("savings_accounts.id"))
-    open_date = Column(TIMESTAMP)
-    current_balance = Column(FLOAT)
+    open_date = Column(DateTime)
+    current_balance = Column(Float)
     association_member_id = Column(Integer, ForeignKey("associationmembers.association_members_id"), nullable=True)
     member_id = Column(Integer, ForeignKey("members.member_id"))
 
@@ -299,8 +349,8 @@ class MemberShareAccount(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     share_id = Column(Integer, ForeignKey("share_account.id"))
-    open_date = Column(TIMESTAMP)
-    current_balance = Column(FLOAT)
+    open_date = Column(DateTime)
+    current_balance = Column(Float)
     association_member_id = Column(Integer, ForeignKey("associationmembers.association_members_id"), nullable=True)
     member_id = Column(Integer, ForeignKey("members.member_id"))
 
@@ -315,8 +365,8 @@ class MemberLoanAccount(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     loan_id = Column(Integer, ForeignKey("loan_account.id"))
-    open_date = Column(TIMESTAMP)
-    current_balance = Column(FLOAT)
+    open_date = Column(DateTime)
+    current_balance = Column(Float)
     association_member_id = Column(Integer, ForeignKey("associationmembers.association_members_id"), nullable=True)
     member_id = Column(Integer, ForeignKey("members.member_id"))
 
@@ -330,8 +380,8 @@ class MemberCommodityAccount(Base):
     __tablename__ = "member_commodity_acc"
 
     id = Column(Integer, primary_key=True, index=True)
-    open_date = Column(TIMESTAMP)
-    cash_value = Column(FLOAT)
+    open_date = Column(DateTime)
+    cash_value = Column(Float)
     association_member_id = Column(Integer, ForeignKey("associationmembers.association_members_id"), nullable=True)
     member_id = Column(Integer, ForeignKey("members.member_id"))
     commodity_id = Column(Integer, ForeignKey("commodity_account.id"))
@@ -351,7 +401,7 @@ class MemberCommodityAccCommodities(Base):
     commodities_id = Column(Integer, ForeignKey("commodities.id"))
     units_id = Column(Integer, ForeignKey("units/kg.id"))
     total_number = Column(Integer)
-    commodity_cash_value = Column(FLOAT)
+    commodity_cash_value = Column(Float)
     wieght = Column(Integer)
     tons = Column(Integer)
 
@@ -365,13 +415,11 @@ class AssociationType(Base):
 
     associationtype_id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     association_type = Column(String)
-    accepted_forms = Column(String)
-    open_date = Column(TIMESTAMP)
+    accepted_forms = Column(String, nullable=True)
+    open_date = Column(DateTime)
     society_id = Column(Integer, ForeignKey("society.id"))
 
     asso = relationship("Association", back_populates="assotype")
-    commodities_type = relationship("AssociationTypeCommodities", back_populates="type_commodities")
-    watertank = relationship("CommodityAccount", back_populates="assohouse")
     society = relationship("Society", back_populates="association")
 
 
@@ -383,6 +431,8 @@ class Society(Base):
 
     association = relationship("AssociationType", back_populates="society")
     accbank = relationship("SocietyBankAccounts", back_populates="bankacc")
+    watertank = relationship("CommodityAccount", back_populates="assohouse")
+    commodities_type = relationship("SocietyCommodities", back_populates="type_commodities")
 
 
 class SocietyBankAccounts(Base):
@@ -391,7 +441,7 @@ class SocietyBankAccounts(Base):
     id = Column(Integer, primary_key=True, index=True)
     account_name = Column(String)
     open_date = Column(String)
-    current_balance = Column(FLOAT)
+    current_balance = Column(Float)
     society_id = Column(Integer, ForeignKey("society.id"))
     purpose = Column(String, nullable=True)
     opened_by = Column(Integer, ForeignKey("users.id"))
@@ -401,14 +451,14 @@ class SocietyBankAccounts(Base):
     acsotra = relationship("SocietyTransactions", back_populates="trasoac")
 
 
-class AssociationTypeCommodities(Base):
-    __tablename__ = "association_type_commodities"
+class SocietyCommodities(Base):
+    __tablename__ = "society_commodities"
 
-    association_type_commodity_id = Column(Integer, primary_key=True, index=True)
-    association_type_id = Column(Integer, ForeignKey("associationtype.associationtype_id"))
+    society_commodity_id = Column(Integer, primary_key=True, index=True)
+    society_id = Column(Integer, ForeignKey("society.id"))
     commodities_id = Column(Integer, ForeignKey("commodities.id"))
 
-    type_commodities = relationship("AssociationType", back_populates="commodities_type")
+    type_commodities = relationship("Society", back_populates="commodities_type")
     commodity_type = relationship("Commodities", back_populates="type_commodity")
 
 
@@ -416,10 +466,10 @@ class Association(Base):
     __tablename__ = "association"
 
     association_id = Column(Integer, primary_key=True, index=True)
-    association_name = Column(VARCHAR, nullable=False)
+    association_name = Column(String, nullable=False)
     association_type_id = Column(Integer, ForeignKey("associationtype.associationtype_id"))
-    community_name = Column(TEXT)
-    open_date = Column(DATE)
+    community_name = Column(String)
+    open_date = Column(Date)
     facilitator_userid = Column(Integer, ForeignKey("users.id"))
     association_email = Column(String)
     cluster_office = Column(String)
@@ -439,14 +489,14 @@ class CashAssociationAccount(Base):
     __tablename__ = "cash_association_account"
 
     id = Column(Integer, primary_key=True, index=True)
-    date = Column(DATE)
-    cash_savings_bal = Column(FLOAT)
-    cash_loans_bal = Column(FLOAT)
-    cash_shares_bal = Column(FLOAT)
+    date = Column(Date)
+    cash_savings_bal = Column(Float)
+    cash_loans_bal = Column(Float)
+    cash_shares_bal = Column(Float)
     association_id = Column(Integer, ForeignKey("association.association_id"))
-    cash_value = Column(FLOAT)
-    withdrawal_value = Column(FLOAT)
-    transfers_value = Column(FLOAT)
+    cash_value = Column(Float)
+    withdrawal_value = Column(Float)
+    transfers_value = Column(Float)
 
     cash = relationship("Association", back_populates="asoCashAc")
 
@@ -455,10 +505,10 @@ class MomoAccountAssociation(Base):
     __tablename__ = "momo_account_association"
 
     id = Column(Integer, primary_key=True, index=True)
-    date = Column(DATE)
-    momo_bal = Column(FLOAT)
-    momo_loans_bal = Column(FLOAT)
-    momo_shares_bal = Column(FLOAT)
+    date = Column(Date)
+    momo_bal = Column(Float)
+    momo_loans_bal = Column(Float)
+    momo_shares_bal = Column(Float)
     association_id = Column(Integer, ForeignKey("association.association_id"))
     status = Column(String)
     button = Column(String)
@@ -508,12 +558,13 @@ class TransactionType(Base):
     __tablename__ = "transaction_type"
 
     transactype_id = Column(Integer, primary_key=True, index=True)
-    transactiontype_name = Column(VARCHAR)
+    transactiontype_name = Column(String)
 
     savings_transactions = relationship("SavingsTransaction", back_populates="transaction_type")
     loantransact = relationship("LoansTransaction", back_populates="transaction_type")
     sharetransact = relationship("SharesTransaction", back_populates="transaction_type")
     tpytra = relationship("SocietyTransactions", back_populates="sotype")
+    user_account_transactions = relationship("UserAccountTransactions", back_populates="transaction_type")
 
 
 class CommoditiesTransactionType(Base):
@@ -542,11 +593,11 @@ class SocietyTransactions(Base):
 
     transaction_id = Column(Integer, primary_key=True, index=True)
     transactiontype_id = Column(Integer, ForeignKey("transaction_type.transactype_id"))
-    amount = Column(FLOAT)
+    amount = Column(Float)
     prep_by = Column(Integer, ForeignKey("users.id"))
     narration = Column(String, nullable=True)
-    transaction_date = Column(TIMESTAMP)
-    balance = Column(FLOAT)
+    transaction_date = Column(DateTime)
+    balance = Column(Float)
     society_account_id = Column(Integer, ForeignKey("society_bank_accounts.id"))
 
     prepBy = relationship("Users", back_populates="sotra")
@@ -559,12 +610,12 @@ class SavingsTransaction(Base):
 
     transaction_id = Column(Integer, primary_key=True, index=True)
     transactiontype_id = Column(Integer, ForeignKey("transaction_type.transactype_id"))
-    amount = Column(FLOAT)
+    amount = Column(Float)
     prep_by = Column(Integer, ForeignKey("users.id"))
     narration = Column(String)
-    transaction_date = Column(TIMESTAMP)
+    transaction_date = Column(DateTime)
     savings_acc_id = Column(Integer, ForeignKey("member_savings_acc.id"))
-    balance = Column(FLOAT, nullable=True)
+    balance = Column(Float, nullable=True)
 
     savings_account = relationship("MemberSavingsAccount", back_populates="savings_transactions")
     transaction_type = relationship("TransactionType", back_populates="savings_transactions")
@@ -576,15 +627,15 @@ class LoansTransaction(Base):
 
     transaction_id = Column(Integer, primary_key=True, index=True)
     transactiontype_id = Column(Integer, ForeignKey("transaction_type.transactype_id"))
-    amount = Column(FLOAT)
+    amount = Column(Float)
     prep_by = Column(Integer, ForeignKey("users.id"))
     narration = Column(String)
-    transaction_date = Column(TIMESTAMP)
+    transaction_date = Column(DateTime)
     loans_acc_id = Column(Integer, ForeignKey("member_loan_acc.id"))
     status = Column(String)
-    repayment_starts = Column(DATE)
-    repayment_ends = Column(DATE)
-    balance = Column(FLOAT, nullable=True)
+    repayment_starts = Column(Date)
+    repayment_ends = Column(Date)
+    balance = Column(Float, nullable=True)
 
     loan_account = relationship("MemberLoanAccount", back_populates="loans_transactions")
     transaction_type = relationship("TransactionType", back_populates="loantransact")
@@ -597,14 +648,14 @@ class LoanAdvise(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     period = Column(String)
-    interest_rate_percentage = Column(FLOAT)
-    interest_rate_amount = Column(FLOAT)
+    interest_rate_percentage = Column(Float)
+    interest_rate_amount = Column(Float)
     repayment_starting_date = Column(String)
     repayment_ending_date = Column(String)
-    application_fee = Column(FLOAT)
-    proccessing_fee = Column(FLOAT)
+    application_fee = Column(Float)
+    proccessing_fee = Column(Float)
     loan_transaction_id = Column(Integer, ForeignKey("loans_transactions.transaction_id"))
-    issue_date = Column(TIMESTAMP)
+    issue_date = Column(DateTime)
 
     advise = relationship("LoansTransaction", back_populates="loanadvise")
 
@@ -614,12 +665,12 @@ class SharesTransaction(Base):
 
     transaction_id = Column(Integer, primary_key=True, index=True)
     transactiontype_id = Column(Integer, ForeignKey("transaction_type.transactype_id"))
-    amount = Column(FLOAT)
+    amount = Column(Float)
     prep_by = Column(Integer, ForeignKey("users.id"))
     narration = Column(String)
-    transaction_date = Column(TIMESTAMP)
+    transaction_date = Column(DateTime)
     shares_acc_id = Column(Integer, ForeignKey("member_share_acc.id"))
-    balance = Column(FLOAT, nullable=True)
+    balance = Column(Float, nullable=True)
 
     shares_accounts = relationship("MemberShareAccount", back_populates="shares_transactions")
     transaction_type = relationship("TransactionType", back_populates="sharetransact")
@@ -632,8 +683,8 @@ class ShareCert(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     period = Column(String)
-    interest_rate_percentage = Column(FLOAT)
-    interest_rate_amount = Column(FLOAT)
+    interest_rate_percentage = Column(Float)
+    interest_rate_amount = Column(Float)
     starting_date = Column(String)
     ending_date = Column(String)
     on_due_date = Column(String)
@@ -650,11 +701,11 @@ class CommodityTransactions(Base):
     commodity_transaction_type_id = Column(Integer, ForeignKey("commodity_transaction_type.id"))
     prep_by = Column(Integer, ForeignKey("users.id"))
     narration = Column(String)
-    transaction_date = Column(TIMESTAMP)
+    transaction_date = Column(DateTime)
     commodity_acc_id = Column(Integer, ForeignKey("member_commodity_acc.id"))
     amount_of_commodity = Column(Integer)
     commodities_id = Column(Integer, ForeignKey("commodities.id"))
-    balance = Column(FLOAT, nullable=True)
+    balance = Column(Float, nullable=True)
 
     thethings = relationship("Commodities", back_populates="thingsthe")
     type_nu = relationship("CommoditiesTransactionType", back_populates="nu_type")

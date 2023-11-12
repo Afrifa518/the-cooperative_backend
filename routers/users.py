@@ -44,6 +44,12 @@ async def add_userinfo(dob: str = Form(...),
                        lastName: str = Form(...),
                        email: str = Form(...),
                        username: str = Form(...),
+                       marital_status: Optional[str] = Form(None),
+                       sinn_number: Optional[str] = Form(None),
+                       basic_salary: Optional[float] = Form(None),
+                       account_name: Optional[str] = Form(None),
+                       account_number: Optional[int] = Form(None),
+                       bank_name: Optional[str] = Form(None),
                        user: dict = Depends(get_current_user),
                        db: Session = Depends(get_db)):
     if user is None:
@@ -68,6 +74,12 @@ async def add_userinfo(dob: str = Form(...),
     user_model.phone = phone
     user_model.address = address
     user_model.gender = gender
+    user_model.marital_status = marital_status
+    user_model.sinn_number = sinn_number
+    user_model.basic_salary = basic_salary
+    user_model.account_name = account_name
+    user_model.account_number = account_number
+    user_model.bank_name = bank_name
     users_id = user.get("id")
     user_model.users_id = users_id
     db.add(user_model)
@@ -79,10 +91,7 @@ async def add_userinfo(dob: str = Form(...),
 
 @router.post("/new/role")
 async def create_new_role(role_name: str = Form(...),
-                          user: dict = Depends(get_current_user),
                           db: Session = Depends(get_db)):
-    if user is None:
-        raise get_user_exception()
 
     new = models.UserRoles(
         role_name=role_name,
@@ -145,6 +154,10 @@ async def create_new_role(role_name: str = Form(...),
         view_shares_account=0,
         view_commodity_account=0,
         view_warehouse=0,
+        view_expense=0,
+        expense_approve=0,
+        expense_disbures=0,
+        view_rejected=0,
     )
     db.add(new)
     db.commit()
@@ -268,7 +281,13 @@ async def get_user_details(user: dict = Depends(get_current_user),
     details = db.query(models.UserInfo.dob,
                        models.UserInfo.phone,
                        models.UserInfo.address,
-                       models.UserInfo.gender) \
+                       models.UserInfo.gender,
+                       models.UserInfo.account_name,
+                       models.UserInfo.account_number,
+                       models.UserInfo.bank_name,
+                       models.UserInfo.basic_salary,
+                       models.UserInfo.marital_status,
+                       models.UserInfo.sinn_number) \
         .filter(models.UserInfo.users_id == user.get("id")) \
         .first()
 
@@ -293,7 +312,13 @@ async def get_all_users(user: dict = Depends(get_current_user),
                           models.UserInfo.phone,
                           models.UserInfo.address,
                           models.UserInfo.dob,
-                          models.UserRoles.role_name, ) \
+                          models.UserInfo.marital_status,
+                          models.UserInfo.sinn_number,
+                          models.UserInfo.account_name,
+                          models.UserInfo.account_number,
+                          models.UserInfo.bank_name,
+                          models.UserInfo.basic_salary,
+                          models.UserRoles.role_name) \
         .select_from(models.Users) \
         .join(models.UserInfo, models.UserInfo.users_id == models.Users.id) \
         .outerjoin(models.UserRoles, models.Users.role_id == models.UserRoles.id) \
@@ -317,7 +342,13 @@ async def get_all_users(user: dict = Depends(get_current_user),
             "phone": user_one.phone,
             "address": user_one.address,
             "dob": user_one.dob,
-            "date_joined": user_one.date_joined
+            "date_joined": user_one.date_joined,
+            "marital_status": user_one.marital_status,
+            "sinn_number": user_one.sinn_number,
+            "account_name": user_one.account_name,
+            "account_number": user_one.account_number,
+            "bank_name": user_one.bank_name,
+            "basic_salary": user_one.basic_salary,
         })
 
     return data
@@ -326,6 +357,7 @@ async def get_all_users(user: dict = Depends(get_current_user),
 class UserUpdate(BaseModel):
     user_idd: int
     role_id: Optional[int]
+    basic_salary: Optional[float]
 
 
 @router.patch("/updates/user")
@@ -339,8 +371,14 @@ async def update_user_role(updates: UserUpdate,
         person = db.query(models.Users).filter(models.Users.id == updates.user_idd) \
             .update({models.Users.role_id: updates.role_id})
         db.commit()
+    if updates.basic_salary:
+        person_salary = db.query(models.UserInfo).filter(models.UserInfo.users_id == updates.user_idd) \
+            .update({models.UserInfo.basic_salary: updates.basic_salary})
+        db.commit()
 
     person = db.query(models.Users).filter(models.Users.id == updates.user_idd) \
+        .first()
+    person_salary = db.query(models.UserInfo).filter(models.UserInfo.users_id == updates.user_idd) \
         .first()
 
 

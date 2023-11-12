@@ -1,6 +1,6 @@
 import sys
 
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, and_
 
 sys.path.append("../..")
 
@@ -37,6 +37,7 @@ class SavingsTransaction(BaseModel):
     savings_acc_id: int
     transaction_id: Optional[int]
     balance: Optional[float]
+    decide: Optional[str]
 
 
 class SavingTransaction(BaseModel):
@@ -44,6 +45,24 @@ class SavingTransaction(BaseModel):
     Amountt: float
     narrationn: Optional[str]
     savings_acc_idd: int
+
+
+class SavingTransactionnEdit(BaseModel):
+    transaction_id: int
+    transactiontype_idd: int
+    Amountt: float
+    narrationn: Optional[str]
+    savings_acc_idd: int
+    date: str
+
+
+class SavingTransactionEdit(BaseModel):
+    transaction_id: int
+    Amount: float
+    narration: Optional[str]
+    savings_acc_id: int
+    balance: Optional[float]
+    date: str
 
 
 class LoansTransaction(BaseModel):
@@ -73,72 +92,91 @@ async def create_transactions_savings_acc(transactSave: SavingsTransaction,
     if user is None:
         raise get_user_exception()
 
-    existing_transactions = db.query(models.SavingsTransaction).filter(
-        models.SavingsTransaction.transaction_id == transactSave.transaction_id).first()
     prev_balance = db.query(models.MemberSavingsAccount).filter(
         models.MemberSavingsAccount.id == transactSave.savings_acc_id).first()
 
     results = await check_for_stamps_and_cash(member_savings_acc=transactSave.savings_acc_id, user=user, db=db)
 
-    if existing_transactions:
-        existing_transactions.transactiontype_id = transactSave.transactiontype_id
-        existing_transactions.prep_by = user.get("id")
-        existing_transactions.amount = transactSave.Amount
-        existing_transactions.savings_acc_id = transactSave.savings_acc_id
-        existing_transactions.balance = (
-                                                prev_balance.current_balance - existing_transactions.amount) + transactSave.Amount
-        db.commit()
+    stamp = transactSave.Amount * results.stamp_value
+    if transactSave.decide == "Use Stamps":
+        transactions_models = models.SavingsTransaction()
+        transactions_models.transactiontype_id = transactSave.transactiontype_id
+        transactions_models.amount = stamp
+        transactions_models.prep_by = user.get("id")
+        transactions_models.narration = transactSave.narration
+        transactions_models.savings_acc_id = transactSave.savings_acc_id
+        transactions_models.transaction_date = datetime.now()
+        transactions_models.balance = prev_balance.current_balance + stamp
     else:
-        if results.stamp_value:
-            stamp = transactSave.Amount * results.stamp_value
-            transactions_models = models.SavingsTransaction()
-            transactions_models.transactiontype_id = transactSave.transactiontype_id
-            transactions_models.amount = stamp
-            transactions_models.prep_by = user.get("id")
-            transactions_models.narration = transactSave.narration
-            transactions_models.savings_acc_id = transactSave.savings_acc_id
-            transactions_models.transaction_date = datetime.now()
-            transactions_models.balance = prev_balance.current_balance + stamp
-        else:
-            transactions_models = models.SavingsTransaction()
-            transactions_models.transactiontype_id = transactSave.transactiontype_id
-            transactions_models.amount = transactSave.Amount
-            transactions_models.prep_by = user.get("id")
-            transactions_models.narration = transactSave.narration
-            transactions_models.savings_acc_id = transactSave.savings_acc_id
-            transactions_models.transaction_date = datetime.now()
-            transactions_models.balance = prev_balance.current_balance + transactSave.Amount
+        transactions_models = models.SavingsTransaction()
+        transactions_models.transactiontype_id = transactSave.transactiontype_id
+        transactions_models.amount = transactSave.Amount
+        transactions_models.prep_by = user.get("id")
+        transactions_models.narration = transactSave.narration
+        transactions_models.savings_acc_id = transactSave.savings_acc_id
+        transactions_models.transaction_date = datetime.now()
+        transactions_models.balance = prev_balance.current_balance + transactSave.Amount
 
-        if transactSave.transactiontype_id == 2:
-            association_id = db.query(models.Association) \
-                .select_from(models.Association) \
-                .join(models.AssociationMembers,
-                      models.AssociationMembers.association_id == models.Association.association_id) \
-                .join(models.MemberSavingsAccount,
-                      models.MemberSavingsAccount.association_member_id == models.AssociationMembers.association_members_id) \
-                .filter(models.MemberSavingsAccount.id == transactSave.savings_acc_id) \
-                .first()
-            current_date = datetime.now()
-            today_date = current_date.strftime('%Y-%m-%d')
+    if transactSave.transactiontype_id == 2:
+        association_id = db.query(models.Association) \
+            .select_from(models.Association) \
+            .join(models.AssociationMembers,
+                  models.AssociationMembers.association_id == models.Association.association_id) \
+            .join(models.MemberSavingsAccount,
+                  models.MemberSavingsAccount.association_member_id == models.AssociationMembers.association_members_id) \
+            .filter(models.MemberSavingsAccount.id == transactSave.savings_acc_id) \
+            .first()
+        current_date = datetime.now()
+        today_date = current_date.strftime('%Y-%m-%d')
 
-            today = db.query(models.MomoAccountAssociation) \
-                .filter(models.MomoAccountAssociation.date == today_date,
-                        models.MomoAccountAssociation.association_id == association_id.association_id) \
-                .first()
-            if today:
-                if results.stamp_value:
-                    today.momo_bal -= stamp
-                else:
-                    today.momo_bal -= transactSave.Amount
-                db.commit()
+        today = db.query(models.MomoAccountAssociation) \
+            .filter(models.MomoAccountAssociation.date == today_date,
+                    models.MomoAccountAssociation.association_id == association_id.association_id) \
+            .first()
+        if today:
+            if transactSave.decide == "Use Stamps":
+                today.momo_bal -= stamp
+            else:
+                today.momo_bal -= transactSave.Amount
+            db.commit()
 
-        db.add(transactions_models)
-        db.flush()
-        db.commit()
-    if existing_transactions:
-        return "Changes made"
-    else:
-        return "Transaction Complete"
+    db.add(transactions_models)
+    db.flush()
+    db.commit()
+    return "Transaction Complete"
+
+
+@router.delete("/transaction/savings/{transaction_id}")
+async def delete_transactions_savings(transaction_id: int,
+                                      user: dict = Depends(get_current_user),
+                                      db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    db.query(models.SavingsTransaction).filter(models.SavingsTransaction.transaction_id == transaction_id).delete()
+    db.commit()
+    return "Transaction Deleted"
+
+
+@router.delete("/transaction/loans/{transaction_id}")
+async def delete_transactions_loans(transaction_id: int,
+                                    user: dict = Depends(get_current_user),
+                                    db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    db.query(models.LoansTransaction).filter(models.LoansTransaction.transaction_id == transaction_id).delete()
+    db.commit()
+    return "Transaction Deleted"
+
+
+@router.delete("/transaction/shares/{transaction_id}")
+async def delete_transactions_shares(transaction_id: int,
+                                     user: dict = Depends(get_current_user),
+                                     db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    db.query(models.SharesTransaction).filter(models.SharesTransaction.transaction_id == transaction_id).delete()
+    db.commit()
+    return "Transaction Deleted"
 
 
 @router.post("/transaction/withdraw")
@@ -165,6 +203,372 @@ async def create_transactions_withdrawals_savings_acc(transactSavee: SavingTrans
     db.commit()
 
     return "Withdraw Successful"
+
+
+@router.post("/transaction/edit")
+async def edit_transactions_savings_acc(transactSavee: SavingTransactionEdit,
+                                        user: dict = Depends(get_current_user),
+                                        db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    prev_balance = db.query(models.MemberSavingsAccount).filter(
+        models.MemberSavingsAccount.id == transactSavee.savings_acc_id).first()
+
+    testam = db.query(models.SavingsTransaction).filter(
+        models.SavingsTransaction.transaction_id == transactSavee.transaction_id).first()
+
+    amount_difference = transactSavee.Amount - testam.amount
+    if transactSavee.date:
+        update_data = {
+            models.SavingsTransaction.amount: transactSavee.Amount,
+            models.SavingsTransaction.narration: transactSavee.narration,
+            models.SavingsTransaction.balance: models.SavingsTransaction.balance + amount_difference,
+            models.SavingsTransaction.transaction_date: transactSavee.date
+        }
+        transact = db.query(models.SavingsTransaction).filter(
+            models.SavingsTransaction.transaction_id == transactSavee.transaction_id).update(update_data)
+    else:
+        date = testam.transaction_date
+        update_data = {
+            models.SavingsTransaction.amount: transactSavee.Amount,
+            models.SavingsTransaction.narration: transactSavee.narration,
+            models.SavingsTransaction.balance: models.SavingsTransaction.balance + amount_difference,
+            models.SavingsTransaction.transaction_date: date
+        }
+        transact = db.query(models.SavingsTransaction).filter(
+            models.SavingsTransaction.transaction_id == transactSavee.transaction_id).update(update_data)
+
+    balance_update = db.query(models.SavingsTransaction) \
+        .filter(and_(
+        models.SavingsTransaction.transaction_date > testam.transaction_date,
+        models.SavingsTransaction.transaction_id != transactSavee.transaction_id
+    )).all()
+
+    for transaction in balance_update:
+        if transaction.balance:
+            transaction.balance = transaction.balance + amount_difference
+        else:
+            transaction.balance = amount_difference
+    db.flush()
+    db.commit()
+
+    balance = db.query(models.SavingsTransaction) \
+        .filter(models.SavingsTransaction.savings_acc_id == transactSavee.savings_acc_id) \
+        .order_by(desc(models.SavingsTransaction.transaction_id)) \
+        .first()
+    prev_balance.current_balance = balance.balance
+    db.commit()
+
+    return "Transaction Updated"
+
+
+@router.post("/transaction/edit/loan")
+async def edit_transactions_loans_acc(transactSavee: SavingTransactionEdit,
+                                      user: dict = Depends(get_current_user),
+                                      db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    prev_balance = db.query(models.MemberLoanAccount).filter(
+        models.MemberLoanAccount.id == transactSavee.savings_acc_id).first()
+
+    testam = db.query(models.LoansTransaction).filter(
+        models.LoansTransaction.transaction_id == transactSavee.transaction_id).first()
+
+    amount_difference = transactSavee.Amount - testam.amount
+    if testam.status == "Request" or testam.status == "Pay off":
+        if transactSavee.date:
+            update_data = {
+                models.LoansTransaction.amount: transactSavee.Amount,
+                models.LoansTransaction.narration: transactSavee.narration,
+                models.LoansTransaction.balance: models.LoansTransaction.balance + amount_difference,
+                models.LoansTransaction.transaction_date: transactSavee.date
+            }
+        else:
+            date = testam.transaction_date
+            update_data = {
+                models.LoansTransaction.amount: transactSavee.Amount,
+                models.LoansTransaction.narration: transactSavee.narration,
+                models.LoansTransaction.balance: models.LoansTransaction.balance + amount_difference,
+                models.LoansTransaction.transaction_date: date
+            }
+    else:
+        if transactSavee.date:
+            update_data = {
+                models.LoansTransaction.amount: transactSavee.Amount,
+                models.LoansTransaction.narration: transactSavee.narration,
+                models.LoansTransaction.transaction_date: transactSavee.date
+            }
+        else:
+            date = testam.transaction_date
+            update_data = {
+                models.LoansTransaction.amount: transactSavee.Amount,
+                models.LoansTransaction.narration: transactSavee.narration,
+                models.LoansTransaction.transaction_date: date
+            }
+
+    transact = db.query(models.LoansTransaction).filter(
+        models.LoansTransaction.transaction_id == transactSavee.transaction_id).update(update_data)
+
+    balance_update = db.query(models.LoansTransaction) \
+        .filter(and_(
+        models.LoansTransaction.transaction_date > testam.transaction_date,
+        models.LoansTransaction.transaction_id != transactSavee.transaction_id
+    )).all()
+
+    for transaction in balance_update:
+        if transaction.balance:
+            transaction.balance = transaction.balance + amount_difference
+        else:
+            transaction.balance = amount_difference
+    db.flush()
+    db.commit()
+
+    balance = db.query(models.LoansTransaction) \
+        .filter(models.LoansTransaction.loans_acc_id == transactSavee.savings_acc_id) \
+        .order_by(desc(models.LoansTransaction.transaction_id)) \
+        .first()
+    prev_balance.current_balance = balance.balance
+    db.commit()
+
+    return "Transaction Updated"
+
+
+@router.post("/transaction/other/edit/loan")
+async def edit_transactions_other_loans_acc(transactSavee: SavingTransactionnEdit,
+                                            user: dict = Depends(get_current_user),
+                                            db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    prev_balance = db.query(models.MemberLoanAccount).filter(
+        models.MemberLoanAccount.id == transactSavee.savings_acc_idd).first()
+
+    testam = db.query(models.LoansTransaction).filter(
+        models.LoansTransaction.transaction_id == transactSavee.transaction_id).first()
+
+    amount_difference = transactSavee.Amountt - testam.amount
+    if transactSavee.date:
+        if testam.status == "Request":
+            update_data = {
+                models.LoansTransaction.amount: transactSavee.Amountt,
+                models.LoansTransaction.narration: transactSavee.narrationn,
+                models.LoansTransaction.balance: models.LoansTransaction.balance - amount_difference,
+                models.LoansTransaction.transaction_date: transactSavee.date
+            }
+        else:
+            update_data = {
+                models.LoansTransaction.amount: transactSavee.Amountt,
+                models.LoansTransaction.narration: transactSavee.narrationn,
+                models.LoansTransaction.transaction_date: transactSavee.date
+            }
+    else:
+        date = testam.transaction_date
+        if testam.status == "Request":
+            update_data = {
+                models.LoansTransaction.amount: transactSavee.Amountt,
+                models.LoansTransaction.narration: transactSavee.narrationn,
+                models.LoansTransaction.balance: models.LoansTransaction.balance - amount_difference,
+                models.LoansTransaction.transaction_date: date
+            }
+        else:
+            update_data = {
+                models.LoansTransaction.amount: transactSavee.Amountt,
+                models.LoansTransaction.narration: transactSavee.narrationn,
+                models.LoansTransaction.transaction_date: date
+            }
+    transact = db.query(models.LoansTransaction).filter(
+        models.LoansTransaction.transaction_id == transactSavee.transaction_id).update(update_data)
+
+    balance_update = db.query(models.LoansTransaction) \
+        .filter(and_(
+        models.LoansTransaction.transaction_date > testam.transaction_date,
+        models.LoansTransaction.transaction_id != transactSavee.transaction_id
+    )).all()
+
+    for transaction in balance_update:
+        if transaction.balance:
+            transaction.balance = transaction.balance + amount_difference
+        else:
+            transaction.balance = amount_difference
+    db.flush()
+    db.commit()
+    balance = db.query(models.LoansTransaction) \
+        .filter(models.LoansTransaction.loans_acc_id == transactSavee.savings_acc_idd) \
+        .order_by(desc(models.LoansTransaction.transaction_id)) \
+        .first()
+    prev_balance.current_balance = balance.balance
+    db.commit()
+
+    return "Transaction Updated"
+
+
+@router.post("/transaction/other/edit")
+async def edit_transactions_other_savings_acc(transactSavee: SavingTransactionnEdit,
+                                              user: dict = Depends(get_current_user),
+                                              db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    prev_balance = db.query(models.MemberSavingsAccount).filter(
+        models.MemberSavingsAccount.id == transactSavee.savings_acc_idd).first()
+
+    testam = db.query(models.SavingsTransaction).filter(
+        models.SavingsTransaction.transaction_id == transactSavee.transaction_id).first()
+
+    amount_difference = transactSavee.Amountt - testam.amount
+    if transactSavee.date:
+        update_data = {
+            models.SavingsTransaction.amount: transactSavee.Amountt,
+            models.SavingsTransaction.narration: transactSavee.narrationn,
+            models.SavingsTransaction.balance: models.SavingsTransaction.balance - amount_difference,
+            models.SavingsTransaction.transaction_date: transactSavee.date
+        }
+    else:
+        date = testam.transaction_date
+        update_data = {
+            models.SavingsTransaction.amount: transactSavee.Amountt,
+            models.SavingsTransaction.narration: transactSavee.narrationn,
+            models.SavingsTransaction.balance: models.SavingsTransaction.balance - amount_difference,
+            models.SavingsTransaction.transaction_date: date
+        }
+
+    transact = db.query(models.SavingsTransaction).filter(
+        models.SavingsTransaction.transaction_id == transactSavee.transaction_id).update(update_data)
+
+    balance_update = db.query(models.SavingsTransaction) \
+        .filter(and_(
+        models.SavingsTransaction.transaction_date > testam.transaction_date,
+        models.SavingsTransaction.transaction_id != transactSavee.transaction_id
+    )).all()
+
+    for transaction in balance_update:
+        if transaction.balance:
+            transaction.balance = transaction.balance + amount_difference
+        else:
+            transaction.balance = amount_difference
+
+    db.flush()
+    db.commit()
+    balance = db.query(models.SavingsTransaction) \
+        .filter(models.SavingsTransaction.savings_acc_id == transactSavee.savings_acc_idd) \
+        .order_by(desc(models.SavingsTransaction.transaction_id)) \
+        .first()
+    prev_balance.current_balance = balance.balance
+    db.commit()
+
+    return "Transaction Updated"
+
+
+@router.post("/transaction/share")
+async def edit_transactions_share_acc(transactSavee: SavingTransactionEdit,
+                                      user: dict = Depends(get_current_user),
+                                      db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    prev_balance = db.query(models.MemberShareAccount).filter(
+        models.MemberShareAccount.id == transactSavee.savings_acc_id).first()
+
+    testam = db.query(models.SharesTransaction).filter(
+        models.SharesTransaction.transaction_id == transactSavee.transaction_id).first()
+
+    amount_difference = transactSavee.Amount + testam.amount
+    if transactSavee.date:
+        update_data = {
+            models.SharesTransaction.amount: transactSavee.Amount,
+            models.SharesTransaction.narration: transactSavee.narration,
+            models.SharesTransaction.balance: models.SharesTransaction.balance + amount_difference,
+            models.SharesTransaction.transaction_date: transactSavee.date
+        }
+    else:
+        date = testam.transaction_date
+        update_data = {
+            models.SharesTransaction.amount: transactSavee.Amount,
+            models.SharesTransaction.narration: transactSavee.narration,
+            models.SharesTransaction.balance: models.SharesTransaction.balance + amount_difference,
+            models.SharesTransaction.transaction_date: date
+        }
+    transact = db.query(models.SharesTransaction).filter(
+        models.SharesTransaction.transaction_id == transactSavee.transaction_id).update(update_data)
+
+    balance_update = db.query(models.SharesTransaction) \
+        .filter(and_(
+        models.SharesTransaction.transaction_date > testam.transaction_date,
+        models.SharesTransaction.transaction_id != transactSavee.transaction_id
+    )).all()
+
+    for transaction in balance_update:
+        if transaction.balance:
+            transaction.balance = transaction.balance + amount_difference
+        else:
+            transaction.balance = amount_difference
+    db.flush()
+    db.commit()
+    balance = db.query(models.SharesTransaction) \
+        .filter(models.SharesTransaction.shares_acc_id == transactSavee.savings_acc_id) \
+        .order_by(desc(models.SharesTransaction.transaction_id)) \
+        .first()
+    prev_balance.current_balance = balance.balance
+    db.commit()
+
+    return "Transaction Updated"
+
+
+@router.post("/transaction/other/edit/share")
+async def edit_transactions_other_share_acc(transactSavee: SavingTransactionnEdit,
+                                            user: dict = Depends(get_current_user),
+                                            db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    prev_balance = db.query(models.MemberShareAccount).filter(
+        models.MemberShareAccount.id == transactSavee.savings_acc_idd).first()
+
+    testam = db.query(models.SharesTransaction).filter(
+        models.SharesTransaction.transaction_id == transactSavee.transaction_id).first()
+
+    amount_difference = transactSavee.Amountt - testam.amount
+    if transactSavee.date:
+        update_data = {
+            models.SharesTransaction.amount: transactSavee.Amountt,
+            models.SharesTransaction.narration: transactSavee.narrationn,
+            models.SharesTransaction.balance: models.SharesTransaction.balance - amount_difference,
+            models.SharesTransaction.transaction_date: transactSavee.date
+        }
+    else:
+        date = testam.transaction_date
+        update_data = {
+            models.SharesTransaction.amount: transactSavee.Amountt,
+            models.SharesTransaction.narration: transactSavee.narrationn,
+            models.SharesTransaction.balance: models.SharesTransaction.balance - amount_difference,
+            models.SharesTransaction.transaction_date: date
+        }
+    transact = db.query(models.SharesTransaction).filter(
+        models.SharesTransaction.transaction_id == transactSavee.transaction_id).update(update_data)
+
+    balance_update = db.query(models.SharesTransaction) \
+        .filter(and_(
+        models.SharesTransaction.transaction_date > testam.transaction_date,
+        models.SharesTransaction.transaction_id != transactSavee.transaction_id
+    )).all()
+
+    for transaction in balance_update:
+        if transaction.balance:
+            transaction.balance = transaction.balance + amount_difference
+        else:
+            transaction.balance = amount_difference
+    db.flush()
+    db.commit()
+    balance = db.query(models.SharesTransaction) \
+        .filter(models.SharesTransaction.shares_acc_id == transactSavee.savings_acc_idd) \
+        .order_by(desc(models.SharesTransaction.transaction_id)) \
+        .first()
+    prev_balance.current_balance = balance.balance
+    db.commit()
+
+    return "Transaction Updated"
 
 
 class SocietyTransaction(BaseModel):
@@ -283,8 +687,6 @@ async def transfer_in_society_account(transfer: SocietTransfer,
         raise insufficient_balance()
 
 
-
-
 # @router.get("/transactions/save/")
 # async def get_savings_acc_transactions(user: dict = Depends(get_current_user),
 #                                        db: Session = Depends(get_db)):
@@ -299,16 +701,18 @@ async def check_for_stamps_and_cash(member_savings_acc: int,
                                     db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
-    stampOrCash = db.query(models.SavingsAccount.stamp_value) \
+
+    stampOrCash = db.query(models.SavingsAccount) \
         .select_from(models.MemberSavingsAccount) \
         .join(models.SavingsAccount, models.SavingsAccount.id == models.MemberSavingsAccount.savings_id) \
         .filter(models.MemberSavingsAccount.id == member_savings_acc) \
         .first()
-    if stampOrCash == None:
-        return "Using Cash"
-    else:
+
+    if stampOrCash.stamp_value:
         dta = stampOrCash
         return dta
+    else:
+        return "Using Cash"
     # return stampOrCash
 
 

@@ -5,7 +5,7 @@ from sqlalchemy import desc, func
 sys.path.append("../..")
 
 from typing import Optional, List
-from fastapi import Depends, HTTPException, APIRouter
+from fastapi import Depends, HTTPException, APIRouter, Form
 import models
 from database import engine, SessionLocal
 from sqlalchemy.orm import Session
@@ -59,19 +59,66 @@ class CommodityAccount(BaseModel):
     warehouse: str
     commodities: Optional[List[int]] = None
     community: str
-    association_type_id: int
+    society_id: int
     rebagging_fee: float
-    treatment_fee: float
+    stacking_fee: float
     destoning_fee: float
     cleaning_fee: float
     storage_fee: float
     tax_fee: float
+    stitching_fee: float
+    loading_fee: float
+    empty_sack_cost_fee: float
 
 
 class SocietyAccounts(BaseModel):
     account_name: str
     society_id: int
     purpose: Optional[str]
+
+
+@router.delete("/delete_acc/save/{savings_acc_id}")
+async def delete_savings_account(savings_acc_id: int,
+                                 user: dict = Depends(get_current_user),
+                                 db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    rjjb = db.query(models.MemberSavingsAccount).filter(models.MemberSavingsAccount.id == savings_acc_id).first()
+    bob = rjjb
+    if rjjb.current_balance < 0:
+        return "Depts must be cleared before deleting account"
+    elif rjjb.current_balance > 0:
+        return "Account must be empty before deleting"
+    else:
+        tra = db.query(models.SavingsTransaction).filter(
+            models.SavingsTransaction.savings_acc_id == savings_acc_id).delete(synchronize_session=False)
+
+        db.commit()
+        db.query(models.MemberSavingsAccount).filter(models.MemberSavingsAccount.id == savings_acc_id).delete()
+        db.commit()
+        return "Account Deleted"
+
+
+@router.delete("/delete_acc/loan/{loan_acc_id}")
+async def delete_loans_account(loan_acc_id: int,
+                                 user: dict = Depends(get_current_user),
+                                 db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    rjjb = db.query(models.MemberLoanAccount).filter(models.MemberLoanAccount.id == loan_acc_id).first()
+    bob = rjjb
+    if rjjb.current_balance < 0:
+        return "Depts must be cleared before deleting account"
+    elif rjjb.current_balance > 0:
+        return "Account must be empty before deleting"
+    else:
+        tra = db.query(models.LoansTransaction).filter(
+            models.LoansTransaction.loans_acc_id == loan_acc_id).delete(synchronize_session=False)
+
+        db.commit()
+        db.query(models.MemberLoanAccount).filter(models.MemberLoanAccount.id == loan_acc_id).delete()
+        db.commit()
+        return "Account Deleted"
 
 
 @router.post("/society/account")
@@ -104,7 +151,97 @@ async def get_society(society_id: int,
                       db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
-    return db.query(models.SocietyBankAccounts).filter(models.SocietyBankAccounts.society_id == society_id).all()
+    dd = db.query(models.SocietyBankAccounts).filter(models.SocietyBankAccounts.society_id == society_id).all()
+    name = db.query(models.Society).filter(models.Society.id == society_id).first()
+    return {"Accounts": dd, "Society_Name": name.society}
+
+
+@router.post("/payment/details")
+async def payment_details(transaction_id: int = Form(...),
+                          bank_id: int = Form(...),
+                          user: dict = Depends(get_current_user),
+                          db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    dh = db.query(models.UserAccountTransactions,
+                  models.Users,
+                  models.UserRoles).join(models.UserAccount,
+                                         models.UserAccount.user_account_id == models.UserAccountTransactions.user_account_id).join(
+        models.Users,
+        models.Users.id == models.UserAccount.user_id).join(models.UserRoles,
+                                                            models.UserRoles.id == models.Users.role_id).filter(
+        models.UserAccountTransactions.transaction_id == transaction_id).first()
+    dc = db.query(models.SocietyBankAccounts).filter(models.SocietyBankAccounts.id == bank_id).first()
+
+    current_bank_amount = dc.current_balance
+    amount_after_disbursement = current_bank_amount - dh.UserAccountTransactions.amount
+    bank_account_name = dc.account_name
+    funds_reciever = dh.Users.firstName + " " + dh.Users.lastName
+    reason_for_funds = dh.UserAccountTransactions.narration
+    request_date = dh.UserAccountTransactions.request_date
+    reciever_role = dh.UserRoles.role_name
+    reciever_email = dh.Users.email
+
+    return {
+        "Bank_Account_Name": bank_account_name,
+        "Funds_Reciever": funds_reciever,
+        "Reason_For_Funds": reason_for_funds,
+        "Request_Date": request_date,
+        "Reciever_Role": reciever_role,
+        "Reciever_Email": reciever_email,
+        "Current_Bank_Amount": current_bank_amount,
+        "Amount_After_Disbursement": amount_after_disbursement,
+        "Amount_Requesting": dh.UserAccountTransactions.amount
+    }
+
+
+@router.post("/disburse/funds")
+async def disbures_funds(transaction_id: int = Form(...),
+                         bank_id: int = Form(...),
+                         user: dict = Depends(get_current_user),
+                         db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    dh = (db.query(models.UserAccountTransactions,
+                   models.Users,
+                   models.UserRoles)
+          .join(models.UserAccount,
+                models.UserAccount.user_account_id == models.UserAccountTransactions.user_account_id)
+          .join(models.Users, models.Users.id == models.UserAccount.user_id)
+          .join(models.UserRoles, models.UserRoles.id == models.Users.role_id)
+          .filter(models.UserAccountTransactions.transaction_id == transaction_id)
+          .first())
+
+    transaction = db.query(models.UserAccountTransactions) \
+        .filter(models.UserAccountTransactions.transaction_id == transaction_id) \
+        .first()
+    if transaction is None:
+        raise HTTPException(status_code=404, detail="Transaction Not Found")
+    transaction.status = "Disbursed"
+    transaction.disburse_date = datetime.now()
+    db.commit()
+
+    er = db.query(models.UserAccount).filter(models.UserAccount.user_id == dh.Users.id).first()
+    er.current_balance = (er.current_balance + transaction.amount)
+    db.commit()
+
+    bank_account = db.query(models.SocietyBankAccounts).filter(models.SocietyBankAccounts.id == bank_id).first()
+    bank_account.current_balance = (bank_account.current_balance - transaction.amount)
+    db.commit()
+    dj = models.SocietyTransactions(
+        transactiontype_id=2,
+        amount=transaction.amount,
+        prep_by=user.get("id"),
+        narration=f"Disbursed to {dh.Users.firstName} {dh.Users.lastName}",
+        transaction_date=datetime.now(),
+        balance=bank_account.current_balance - transaction.amount,
+        society_account_id=bank_id
+    )
+    db.add(dj)
+    db.commit()
+
+    return "Funds Disbursed"
 
 
 @router.get("/society/transfer/all/{society_acc_id}")
@@ -143,7 +280,7 @@ class EditSavingsAccount(BaseModel):
     is_refundable: bool
     medium_of_exchange: str
     interest_over_a_year: Optional[float]
-    stamp_value: Optional[str]
+    stamp_value: Optional[int]
 
 
 @router.post("/savings/edit")
@@ -152,19 +289,364 @@ async def edit_savings(savings: EditSavingsAccount,
                        db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
-
-    update_data = {
-        models.SavingsAccount.account_name: savings.account_name,
-        models.SavingsAccount.is_refundable: savings.is_refundable,
-        models.SavingsAccount.medium_of_exchange: savings.medium_of_exchange,
-        models.SavingsAccount.interest_over_a_year: savings.interest_over_a_year,
-        models.SavingsAccount.stamp_value: savings.stamp_value
-    }
+    if savings.medium_of_exchange == "cash":
+        update_data = {
+            models.SavingsAccount.account_name: savings.account_name,
+            models.SavingsAccount.is_refundable: savings.is_refundable,
+            models.SavingsAccount.medium_of_exchange: savings.medium_of_exchange,
+            models.SavingsAccount.interest_over_a_year: savings.interest_over_a_year,
+            models.SavingsAccount.stamp_value: None
+        }
+    else:
+        update_data = {
+            models.SavingsAccount.account_name: savings.account_name,
+            models.SavingsAccount.is_refundable: savings.is_refundable,
+            models.SavingsAccount.medium_of_exchange: savings.medium_of_exchange,
+            models.SavingsAccount.interest_over_a_year: savings.interest_over_a_year,
+            models.SavingsAccount.stamp_value: savings.stamp_value
+        }
 
     db.query(models.SavingsAccount).filter(models.SavingsAccount.id == savings.id).update(update_data)
     db.commit()
 
     return "Edit Complete"
+
+
+class Transaction(BaseModel):
+    transaction_type_id: int
+    amount: float
+    narration: Optional[str]
+
+
+@router.post("/transact_funds")
+async def transaction_funds(transaction_type_id: int = Form(...),
+                            amount: int = Form(...),
+                            narration: Optional[str] = Form(None),
+                            user: dict = Depends(get_current_user),
+                            db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    acc_id = db.query(models.UserAccount).filter(models.UserAccount.user_id == user.get("id")).first()
+    if transaction_type_id == 1:
+        req = models.UserAccountTransactions(
+            transaction_type_id=transaction_type_id,
+            amount=amount,
+            user_account_id=acc_id.user_account_id,
+            narration=narration,
+            request_date=datetime.now(),
+            disburse_date=None,
+            status="Request",
+            balance=acc_id.current_balance
+        )
+        db.add(req)
+        db.commit()
+    elif transaction_type_id == 2:
+        if acc_id.current_balance < amount:
+            raise HTTPException(status_code=400, detail="Insufficient Funds")
+        else:
+            acc_id.current_balance -= amount
+            db.commit()
+            req = models.UserAccountTransactions(
+                transaction_type_id=transaction_type_id,
+                amount=amount,
+                user_account_id=acc_id.user_account_id,
+                narration=narration,
+                request_date=datetime.now(),
+                disburse_date=datetime.now(),
+                status="Withdrawal",
+                balance=acc_id.current_balance
+            )
+            db.add(req)
+            db.commit()
+        db.add(req)
+        db.commit()
+
+    return "Funds Requested"
+
+
+@router.get("/expense/list")
+async def get_all_expense_list(user: dict = Depends(get_current_user),
+                               db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    dh = db.query(models.UserAccountTransactions.transaction_id,
+                  models.UserAccountTransactions.narration,
+                  models.UserAccountTransactions.request_date,
+                  models.UserAccountTransactions.amount,
+                  models.UserAccountTransactions.status,
+                  models.UserAccountTransactions.balance,
+                  models.Users.firstName,
+                  models.Users.lastName,
+                  models.UserRoles.role_name) \
+        .select_from(models.UserAccountTransactions) \
+        .join(models.TransactionType,
+              models.TransactionType.transactype_id == models.UserAccountTransactions.transaction_type_id) \
+        .join(models.UserAccount,
+              models.UserAccount.user_account_id == models.UserAccountTransactions.user_account_id) \
+        .join(models.Users,
+              models.Users.id == models.UserAccount.user_id) \
+        .join(models.UserRoles,
+              models.UserRoles.id == models.Users.role_id) \
+        .filter(models.UserAccountTransactions.status == "Request") \
+        .order_by(desc(models.UserAccountTransactions.transaction_id)) \
+        .all()
+
+    dg = db.query(models.UserAccountTransactions.transaction_id,
+                  models.UserAccountTransactions.narration,
+                  models.UserAccountTransactions.request_date,
+                  models.UserAccountTransactions.amount,
+                  models.ApprovalMessage.message,
+                  models.UserAccountTransactions.status,
+                  models.UserAccountTransactions.balance,
+                  models.Users.firstName,
+                  models.Users.lastName,
+                  models.UserRoles.role_name) \
+        .select_from(models.UserAccountTransactions) \
+        .join(models.ApprovalMessage,
+              models.ApprovalMessage.id == models.UserAccountTransactions.message_id) \
+        .join(models.TransactionType,
+              models.TransactionType.transactype_id == models.UserAccountTransactions.transaction_type_id) \
+        .join(models.UserAccount,
+              models.UserAccount.user_account_id == models.UserAccountTransactions.user_account_id) \
+        .join(models.Users,
+              models.Users.id == models.UserAccount.user_id) \
+        .join(models.UserRoles,
+              models.UserRoles.id == models.Users.role_id) \
+        .filter(models.UserAccountTransactions.status == "Approved") \
+        .order_by(desc(models.UserAccountTransactions.transaction_id)) \
+        .all()
+
+    df = db.query(models.UserAccountTransactions.transaction_id,
+                  models.UserAccountTransactions.narration,
+                  models.UserAccountTransactions.request_date,
+                  models.ApprovalMessage.message,
+                  models.UserAccountTransactions.amount,
+                  models.UserAccountTransactions.status,
+                  models.UserAccountTransactions.balance,
+                  models.Users.firstName,
+                  models.Users.lastName,
+                  models.UserRoles.role_name) \
+        .select_from(models.UserAccountTransactions) \
+        .join(models.ApprovalMessage,
+              models.ApprovalMessage.id == models.UserAccountTransactions.message_id) \
+        .join(models.TransactionType,
+              models.TransactionType.transactype_id == models.UserAccountTransactions.transaction_type_id) \
+        .join(models.UserAccount,
+              models.UserAccount.user_account_id == models.UserAccountTransactions.user_account_id) \
+        .join(models.Users,
+              models.Users.id == models.UserAccount.user_id) \
+        .join(models.UserRoles,
+              models.UserRoles.id == models.Users.role_id) \
+        .filter(models.UserAccountTransactions.status == "Rejected") \
+        .order_by(desc(models.UserAccountTransactions.transaction_id)) \
+        .all()
+
+    dk = db.query(models.UserAccountTransactions.transaction_id,
+                  models.UserAccountTransactions.narration,
+                  models.UserAccountTransactions.disburse_date,
+                  models.ApprovalMessage.message,
+                  models.UserAccountTransactions.amount,
+                  models.UserAccountTransactions.status,
+                  models.UserAccountTransactions.balance,
+                  models.Users.firstName,
+                  models.Users.lastName,
+                  models.UserRoles.role_name) \
+        .select_from(models.UserAccountTransactions) \
+        .join(models.ApprovalMessage,
+              models.ApprovalMessage.id == models.UserAccountTransactions.message_id) \
+        .join(models.TransactionType,
+              models.TransactionType.transactype_id == models.UserAccountTransactions.transaction_type_id) \
+        .join(models.UserAccount,
+              models.UserAccount.user_account_id == models.UserAccountTransactions.user_account_id) \
+        .join(models.Users,
+              models.Users.id == models.UserAccount.user_id) \
+        .join(models.UserRoles,
+              models.UserRoles.id == models.Users.role_id) \
+        .filter(models.UserAccountTransactions.status == "Disbursed") \
+        .order_by(desc(models.UserAccountTransactions.transaction_id)) \
+        .all()
+
+    return {
+        "Requested_Expenses": dh,
+        "Approved_Expenses": dg,
+        "Rejected_Expenses": df,
+        "Disbursed_Expenses": dk
+    }
+
+
+@router.post("/request/delete")
+async def delete_request(transaction_id: int = Form(...),
+                         user: dict = Depends(get_current_user),
+                         db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    dh = db.query(models.UserAccountTransactions) \
+        .filter(models.UserAccountTransactions.transaction_id == transaction_id) \
+        .delete()
+    db.commit()
+    return "Request Deleted"
+
+
+@router.post("/request/approve")
+async def approve_request(transaction_id: int = Form(...),
+                          amount: int = Form(...),
+                          actionMessage: str = Form(...),
+                          user: dict = Depends(get_current_user),
+                          db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    dh = db.query(models.UserAccountTransactions) \
+        .filter(models.UserAccountTransactions.transaction_id == transaction_id) \
+        .first()
+    if dh is None:
+        raise HTTPException(status_code=404, detail="Transaction Not Found")
+    if actionMessage:
+        hh = f"{user.get('username')}: {actionMessage}"
+        fr = models.ApprovalMessage(
+            message=hh,
+        )
+        db.add(fr)
+        db.commit()
+
+        dh.status = "Approved"
+        dh.amount = amount
+        dh.message_id = fr.id
+        db.commit()
+    else:
+        dh.status = "Approved"
+        dh.amount = amount
+        db.commit()
+
+    return "Request Approved"
+
+
+@router.post("/request/approve/use")
+async def approve_request(transaction_id: int = Form(...),
+                          amount: int = Form(...),
+                          actionMessage: str = Form(...),
+                          narration: str = Form(...),
+                          user: dict = Depends(get_current_user),
+                          db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    dh = db.query(models.UserAccountTransactions) \
+        .filter(models.UserAccountTransactions.transaction_id == transaction_id) \
+        .first()
+    if dh is None:
+        raise HTTPException(status_code=404, detail="Transaction Not Found")
+    if actionMessage:
+        dh.narration = narration
+        dh.amount = amount
+        db.commit()
+    else:
+        dh.narration = narration
+        dh.amount = amount
+        db.commit()
+
+    return "Request Approved"
+
+
+@router.post("/request/disapprove")
+async def disapprove_request(transaction_id: int = Form(...),
+                             user: dict = Depends(get_current_user),
+                             db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    dh = db.query(models.UserAccountTransactions) \
+        .filter(models.UserAccountTransactions.transaction_id == transaction_id) \
+        .first()
+    if dh is None:
+        raise HTTPException(status_code=404, detail="Transaction Not Found")
+    dh.status = "Request"
+    db.commit()
+    return "Request Disapproved"
+
+
+@router.post("/request/reject")
+async def reject_request(transaction_id: int = Form(...),
+                         amount: int = Form(...),
+                         actionMessage: str = Form(...),
+                         user: dict = Depends(get_current_user),
+                         db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    dh = db.query(models.UserAccountTransactions) \
+        .filter(models.UserAccountTransactions.transaction_id == transaction_id) \
+        .first()
+    if dh is None:
+        raise HTTPException(status_code=404, detail="Transaction Not Found")
+    if actionMessage:
+        hh = f"{user.get('username')}: {actionMessage}"
+        fr = models.ApprovalMessage(
+            message=hh,
+        )
+        db.add(fr)
+        db.commit()
+
+        dh.status = "Rejected"
+        dh.amount = amount
+        dh.message_id = fr.id
+        db.commit()
+    else:
+        dh.status = "Rejected"
+        dh.amount = amount
+        db.commit()
+
+    return "Request Rejected"
+
+
+# @router.post("/setup")
+# async def register_account(user: dict = Depends(get_current_user),
+#                            db: Session = Depends(get_db)):
+#     if user is None:
+#         raise get_user_exception()
+#     user_account = models.UserAccount()
+#     user_account.user_id = user.get("id")
+#     user_account.current_balance = 0.00
+#
+#     db.add(user_account)
+#     db.commit()
+#
+#     return "Account Registered"
+
+
+@router.get("/my_account")
+async def get_my_account_details(user: dict = Depends(get_current_user),
+                                 db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    details = db.query(models.UserAccount).filter(models.UserAccount.user_id == user.get("id")).first()
+    if details is None:
+        user_account = models.UserAccount()
+        user_account.user_id = user.get("id")
+        user_account.current_balance = 0.00
+
+        db.add(user_account)
+        db.commit()
+    transactions = db.query(models.UserAccountTransactions) \
+        .join(models.UserAccount,
+              models.UserAccount.user_account_id == models.UserAccountTransactions.user_account_id) \
+        .filter(models.UserAccount.user_id == user.get("id")) \
+        .all()
+    return {"Details": details, "Transactions": transactions}
+
+
+@router.get("/one/savings/{one_account_id}")
+async def get_savings_info(one_account_id: int,
+                           user: dict = Depends(get_current_user),
+                           db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    de = db.query(models.SavingsAccount).filter(models.SavingsAccount.id == one_account_id).first()
+
+    nu = db.query(models.MemberSavingsAccount).filter(models.MemberSavingsAccount.savings_id == one_account_id).all()
+
+    return {
+        "Account_Details": de,
+        "Account_opened": nu,
+    }
+
 
 @router.get("/savings/details/{account_id}")
 async def get_one_savings_account_details(account_id: int,
@@ -328,13 +810,16 @@ async def create_commodity(commodity: CommodityAccount,
     commodity_model = models.CommodityAccount()
     commodity_model.warehouse = commodity.warehouse
     commodity_model.community = commodity.community
-    commodity_model.association_type_id = commodity.association_type_id
+    commodity_model.society_id = commodity.society_id
     commodity_model.rebagging_fee = commodity.rebagging_fee
-    commodity_model.treatment_fee = commodity.treatment_fee
+    commodity_model.stacking_fee = commodity.stacking_fee
     commodity_model.destoning_fee = commodity.destoning_fee
     commodity_model.cleaning_fee = commodity.cleaning_fee
     commodity_model.storage_fee = commodity.storage_fee
     commodity_model.tax_fee = commodity.tax_fee
+    commodity_model.stitching_fee = commodity.stitching_fee
+    commodity_model.loading_fee = commodity.loading_fee
+    commodity_model.empty_sack_cost_fee = commodity.empty_sack_cost_fee
 
     db.add(commodity_model)
     db.flush()
@@ -344,8 +829,8 @@ async def create_commodity(commodity: CommodityAccount,
     return "Warehouse Added"
 
 
-@router.get("/commodities/{association_type_id}")
-async def get_all_commodities_in_cluster(association_type_id: int,
+@router.get("/commodities/{society_id}")
+async def get_all_commodities_in_cluster(society_id: int,
                                          user: dict = Depends(get_current_user),
                                          db: Session = Depends(get_db)):
     if user is None:
@@ -353,11 +838,11 @@ async def get_all_commodities_in_cluster(association_type_id: int,
 
     commodi = db.query(models.Commodities.id,
                        models.Commodities.commodity) \
-        .select_from(models.AssociationTypeCommodities) \
-        .join(models.Commodities, models.Commodities.id == models.AssociationTypeCommodities.commodities_id) \
-        .join(models.AssociationType,
-              models.AssociationTypeCommodities.association_type_id == models.AssociationType.associationtype_id) \
-        .filter(models.AssociationType.associationtype_id == association_type_id) \
+        .select_from(models.SocietyCommodities) \
+        .join(models.Commodities, models.Commodities.id == models.SocietyCommodities.commodities_id) \
+        .join(models.Society,
+              models.SocietyCommodities.society_id == models.Society.id) \
+        .filter(models.Society.id == society_id) \
         .all()
     return {"All_Commodities": commodi}
 
@@ -415,11 +900,14 @@ class StoreCommodities(BaseModel):
     units_id: int
     total_number: int
     rebagging_fee: bool
-    treatment_fee: bool
+    stacking_fee: bool
     destoning_fee: bool
     cleaning_fee: bool
     storage_fee: bool
     tax_fee: bool
+    stitching_fee: bool
+    loading_fee: bool
+    empty_sack_cost_fee: bool
 
 
 @router.post("/store/commodity")
@@ -465,8 +953,8 @@ async def store_commodity(storage: StoreCommodities,
     )
 
 
-@router.get("/commodity/{association_type_id}/")
-async def get_commodities(association_type_id: int,
+@router.get("/commodity/{society_id}/")
+async def get_commodities(society_id: int,
                           user: dict = Depends(get_current_user),
                           db: Session = Depends(get_db)):
     if user is None:
@@ -474,9 +962,9 @@ async def get_commodities(association_type_id: int,
 
     warehouses = db.query(models.CommodityAccount.warehouse,
                           models.CommodityAccount.id,
-                          models.CommodityAccount.association_type_id) \
+                          models.CommodityAccount.society_id) \
         .select_from(models.CommodityAccount) \
-        .filter(models.CommodityAccount.association_type_id == association_type_id) \
+        .filter(models.CommodityAccount.society_id == society_id) \
         .all()
 
     return {"Warehouse": warehouses}
@@ -491,15 +979,15 @@ async def get_all_commodities_account(user: dict = Depends(get_current_user),
     warehouse = db.query(models.CommodityAccount.warehouse,
                          models.CommodityAccount.id,
                          models.CommodityAccount.community,
-                         models.CommodityAccount.association_type_id) \
+                         models.CommodityAccount.society_id) \
         .select_from(models.CommodityAccount) \
         .all()
 
     return {"Warehouse": warehouse}
 
 
-@router.get("/commodity/account/info/{association_type_id}")
-async def get_warehouse_infomation(association_type_id: int,
+@router.get("/commodity/account/info/{society_id}")
+async def get_warehouse_infomation(society_id: int,
                                    user: dict = Depends(get_current_user),
                                    db: Session = Depends(get_db)):
     if user is None:
@@ -510,12 +998,15 @@ async def get_warehouse_infomation(association_type_id: int,
                           models.CommodityAccount.storage_fee,
                           models.CommodityAccount.cleaning_fee,
                           models.CommodityAccount.destoning_fee,
-                          models.CommodityAccount.treatment_fee,
+                          models.CommodityAccount.stacking_fee,
                           models.CommodityAccount.rebagging_fee,
+                          models.CommodityAccount.stitching_fee,
+                          models.CommodityAccount.loading_fee,
+                          models.CommodityAccount.empty_sack_cost_fee,
                           models.CommodityAccount.community,
                           ) \
         .select_from(models.CommodityAccount) \
-        .filter(models.CommodityAccount.association_type_id == association_type_id) \
+        .filter(models.CommodityAccount.id == society_id) \
         .first()
 
     related_commodities = db.query(models.Commodities) \
@@ -524,7 +1015,7 @@ async def get_warehouse_infomation(association_type_id: int,
               models.CommodityAccountCommodities.commodity_account_id == models.CommodityAccount.id) \
         .join(models.Commodities,
               models.CommodityAccountCommodities.commodities_id == models.Commodities.id) \
-        .filter(models.CommodityAccount.association_type_id == association_type_id) \
+        .filter(models.CommodityAccount.society_id == society_id) \
         .all()
     # print({"Basic_Info": basic_info, "Related Commodities": related_commodities})
 

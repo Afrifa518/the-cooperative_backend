@@ -33,10 +33,10 @@ def get_db():
         db.close()
 
 
-@router.get("/type/commodities/{associationtype_id}")
-async def get_association_type_commodities(associationtype_id: int,
-                                           user: dict = Depends(get_current_user),
-                                           db: Session = Depends(get_db)):
+@router.get("/type/commodities/{society_id}")
+async def get_society_commodities(society_id: int,
+                                  user: dict = Depends(get_current_user),
+                                  db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
 
@@ -125,11 +125,11 @@ async def get_association_type_commodities(associationtype_id: int,
         .join(models.CommodityUnitsJoin, models.Commodities.id == models.CommodityUnitsJoin.commodity_id)
         .join(models.UnitsKg, models.UnitsKg.id == models.CommodityUnitsJoin.unit_per_kg_id)
         .join(models.CommodityGradeValues, models.CommodityGradeValues.commodities_id == models.Commodities.id)
-        .join(models.AssociationTypeCommodities,
-              models.AssociationTypeCommodities.commodities_id == models.Commodities.id)
-        .join(models.AssociationType,
-              models.AssociationType.associationtype_id == models.AssociationTypeCommodities.association_type_id)
-        .filter(models.AssociationType.associationtype_id == associationtype_id)
+        .join(models.SocietyCommodities,
+              models.SocietyCommodities.commodities_id == models.Commodities.id)
+        .join(models.Society,
+              models.Society.id == models.SocietyCommodities.society_id)
+        .filter(models.Society.id == society_id)
         .group_by(models.Commodities.commodity,
                   models.Commodities.id, )
     )
@@ -159,10 +159,9 @@ async def get_association_type_commodities(associationtype_id: int,
     return {"Commodities": commodity_data}
 
 
-
 class CommoditiesCreate(BaseModel):
     commodity: str
-    associationtype_id: int
+    society_id: int
     unit_per_kg: List[int]
     grade: List[str]
     price_per_kg: List[float]
@@ -229,8 +228,8 @@ async def create_new_commodity(data_nkoa: CommoditiesCreate,
         db.add(store_track)
         db.commit()
 
-    addings = models.AssociationTypeCommodities(
-        association_type_id=data_nkoa.associationtype_id,
+    addings = models.SocietyCommodities(
+        society_id=data_nkoa.society_id,
         commodities_id=commodity_id.id
     )
     db.add(addings)

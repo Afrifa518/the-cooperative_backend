@@ -109,12 +109,14 @@ async def create_new_user(username: str = Form(...),
                           gender: str = Form(...),
                           address: Optional[str] = Form(None),
                           phone: Optional[str] = Form(None),
+                          marital_status: Optional[str] = Form(None),
+                          sinn_number: Optional[str] = Form(None),
+                          basic_salary: Optional[float] = Form(None),
+                          account_name: Optional[str] = Form(None),
+                          account_number: Optional[int] = Form(None),
+                          bank_name: Optional[str] = Form(None),
                           role_id: int = Form(...),
-                          user: dict = Depends(get_current_user),
                           db: Session = Depends(get_db)):
-    if user is None:
-        raise get_user_exception()
-
     create_user_model = models.Users()
     create_user_model.username = username
     create_user_model.firstName = firstName
@@ -137,9 +139,22 @@ async def create_new_user(username: str = Form(...),
         address=address,
         phone=phone,
         userImage=None,
+        marital_status=marital_status,
+        sinn_number=sinn_number,
+        basic_salary=basic_salary,
+        bank_name=bank_name,
+        account_name=account_name,
+        account_number=account_number,
         users_id=new_person.id,
     )
     db.add(add_details)
+    db.commit()
+
+    create_user_account = models.UserAccount(
+        current_balance=0,
+        user_id=new_person.id,
+    )
+    db.add(create_user_account)
     db.commit()
 
     return "New User Added"

@@ -1,8 +1,9 @@
+import random
 import sys
 
 sys.path.append("../..")
 
-from typing import Optional
+from typing import Optional, Union
 from fastapi import Depends, HTTPException, APIRouter, File, UploadFile, Form
 from fastapi.responses import JSONResponse
 import models
@@ -175,7 +176,7 @@ async def create_member_and_register_association(association_id: int = Form(...)
                                                  otherAddress: Optional[str] = Form(None),
                                                  ghCardNumber: str = Form(...),
                                                  nextOfKin: Optional[str] = Form(None),
-                                                 ghCardImage: UploadFile | str = None,
+                                                 ghCardImage: Union[UploadFile, None] = None,
                                                  memberImage: UploadFile = File(...),
                                                  otherName: Optional[str] = Form(None),
                                                  commonname: Optional[str] = Form(None),
@@ -246,8 +247,8 @@ async def create_memberinfo(member_id: int = Form(...),
                             otherAddress: Optional[str] = Form(None),
                             ghCardNumber: str = Form(...),
                             nextOfKin: Optional[str] = Form(None),
-                            ghCardImage: UploadFile | None = None,
-                            memberImage: UploadFile | None = None,
+                            ghCardImage: Union[UploadFile, None] = None,
+                            memberImage: Union[UploadFile, None] = None,
                             otherName: Optional[str] = Form(None),
                             commonname: Optional[str] = Form(None),
                             MaritalStatus: Optional[str] = Form(None),
@@ -312,9 +313,12 @@ def details(details: AssociationMembers,
         raise get_user_exception()
     m_id = details.member_id
     a_id = details.association_id
-    register_member(m_id, a_id, db)
+    r = register_member(m_id, a_id, db)
 
     return "Member Registered Successfully"
+
+
+
 
 
 def register_member(member_Id: int,
@@ -345,14 +349,14 @@ def default_registration_account(member_Id: int,
     current_date = datetime.now().strftime("%Y-%m-%d")
     try:
         account_coop_model = models.MemberSavingsAccount(
-            savings_id=2,
+            savings_id=1,
             open_date=current_date,
             current_balance=-20,
             association_member_id=association_member_id,
             member_id=member_Id
         )
         account_dues_model = models.MemberSavingsAccount(
-            savings_id=3,
+            savings_id=2,
             open_date=current_date,
             current_balance=0,
             association_member_id=association_member_id,

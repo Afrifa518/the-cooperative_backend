@@ -4,18 +4,22 @@ from database import engine
 from routers import auth, users, associations, members, accounts, transactions, commodities, permissions
 from fastapi.middleware.cors import CORSMiddleware
 # from mangum import Mangum
+import os
 
 
 
 app = FastAPI()
 # handler = Mangum(app)
+origin = os.getenv("ORIGIN", "*")
 
 app.add_middleware(
     CORSMiddleware,
     allow_methods=["*"],
     allow_headers=["*"],
     allow_credentials=True,
-    allow_origins=["http://localhost:3000"])
+    # allow_origins=[""])
+    allow_origins=[origin])
+
 
 models.Base.metadata.create_all(bind=engine)
 

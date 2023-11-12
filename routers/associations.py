@@ -45,7 +45,7 @@ class Association(BaseModel):
 
 class AssociationType(BaseModel):
     association_type: str
-    accepted_forms: str
+    # accepted_forms: str
     open_date: str
     society_id: int
 
@@ -58,7 +58,7 @@ async def create_association_type(assotype: AssociationType,
         raise get_user_exception()
     type_model = models.AssociationType()
     type_model.association_type = assotype.association_type
-    type_model.accepted_forms = assotype.accepted_forms
+    type_model.accepted_forms = None
     type_model.open_date = assotype.open_date
     type_model.society_id = assotype.society_id
 
@@ -91,8 +91,6 @@ async def create_society(society: str,
     db.add(mod)
     db.commit()
 
-
-
     return "New Society Created"
 
 
@@ -105,6 +103,20 @@ async def change_society_name(society_id: int = Form(...),
         raise get_user_exception()
     update_data = {models.Society.society: new_name}
     db.query(models.Society).filter(models.Society.id == society_id).update(update_data)
+    db.commit()
+    return "Updated Successfully"
+
+
+@router.post("/update/kind")
+async def change_kind_name(associationKind_id: int = Form(...),
+                           new_name: str = Form(...),
+                           user: dict = Depends(get_current_user),
+                           db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    update_data = {models.AssociationType.association_type: new_name}
+    db.query(models.AssociationType).filter(models.AssociationType.associationtype_id == associationKind_id).update(
+        update_data)
     db.commit()
     return "Updated Successfully"
 
@@ -209,6 +221,17 @@ async def all_associations(db: Session = Depends(get_db)):
 
     return results
 
+
+@router.get("/get/association_id/{psb_id}")
+async def get_association_id(psb_id: int,
+                             user: dict = Depends(get_current_user),
+                             db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    dd = db.query(models.AssociationMembers).filter(
+        models.AssociationMembers.association_members_id == psb_id
+    ).first()
+    return dd.association_id
 
 @router.get("/{association_id}")
 async def get_one_association(
