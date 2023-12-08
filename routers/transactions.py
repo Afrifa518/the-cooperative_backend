@@ -1,15 +1,17 @@
 import sys
 
-from sqlalchemy import desc, func, and_
+from sqlalchemy import desc, func, and_, asc
 
 sys.path.append("../..")
 
-from typing import Optional, List
+from typing import Optional, List, Union
 from fastapi import Depends, HTTPException, APIRouter, status, Form
+from dateutil.relativedelta import relativedelta
 import models
 from database import engine, SessionLocal
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+import base64
 from .auth import get_current_user, get_user_exception
 from datetime import datetime, timedelta
 
@@ -92,12 +94,21 @@ async def create_transactions_savings_acc(transactSave: SavingsTransaction,
     if user is None:
         raise get_user_exception()
 
-    prev_balance = db.query(models.MemberSavingsAccount).filter(
-        models.MemberSavingsAccount.id == transactSave.savings_acc_id).first()
-
     results = await check_for_stamps_and_cash(member_savings_acc=transactSave.savings_acc_id, user=user, db=db)
 
-    stamp = transactSave.Amount * results.stamp_value
+    stsvya = db.query(models.SavingsAccount) \
+        .select_from(models.MemberSavingsAccount) \
+        .join(models.SavingsAccount, models.SavingsAccount.id == models.MemberSavingsAccount.savings_id) \
+        .filter(models.MemberSavingsAccount.id == transactSave.savings_acc_id) \
+        .first()
+
+    prev_balance = db.query(models.MemberSavingsAccount).filter(
+        models.MemberSavingsAccount.id == transactSave.savings_acc_id).first()
+    # print(transactSave.decide)
+    if transactSave.decide == "Use Stamps":
+        stamp = transactSave.Amount * stsvya.stamp_value
+    else:
+        stamp = transactSave.Amount
     if transactSave.decide == "Use Stamps":
         transactions_models = models.SavingsTransaction()
         transactions_models.transactiontype_id = transactSave.transactiontype_id
@@ -632,6 +643,7 @@ async def get_society_acc_transactions(society_acc_id: int,
         .join(models.Users,
               models.SocietyTransactions.prep_by == models.Users.id) \
         .filter(models.SocietyTransactions.society_account_id == society_acc_id) \
+        .order_by(desc(models.SocietyTransactions.transaction_date)) \
         .all()
 
     return tra
@@ -716,38 +728,54 @@ async def check_for_stamps_and_cash(member_savings_acc: int,
     # return stampOrCash
 
 
-@router.get("/transaction/{member_savings_acc_id}")
-async def get_one_savings_accounts_transactions(member_savings_acc_id: int,
+@router.post("/transaction/member_savings_acc_id")
+async def get_one_savings_accounts_transactions(member_savings_acc_id: int = Form(...),
+                                                start_date: Optional[str] = Form(None),
+                                                end_date: Optional[str] = Form(None),
                                                 user: dict = Depends(get_current_user),
                                                 db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
-    accounts_transaction = db.query(
-        models.SavingsTransaction.transaction_date,
-        models.SavingsTransaction.narration,
-        models.Users.username,
-        models.SavingsTransaction.amount,
-        models.TransactionType.transactiontype_name,
-        models.SavingsTransaction.transaction_id,
-        models.SavingsTransaction.balance
-    ).select_from(models.SavingsTransaction) \
-        .join(models.TransactionType,
-              models.SavingsTransaction.transactiontype_id == models.TransactionType.transactype_id) \
-        .join(models.Users,
-              models.Users.id == models.SavingsTransaction.prep_by) \
-        .filter(models.SavingsTransaction.savings_acc_id == member_savings_acc_id) \
-        .order_by(desc(models.SavingsTransaction.transaction_id)) \
-        .group_by(
-        models.SavingsTransaction.transaction_date,
-        models.SavingsTransaction.narration,
-        models.Users.username,
-        models.SavingsTransaction.amount,
-        models.TransactionType.transactiontype_name,
-        models.SavingsTransaction.transaction_id,
-    ) \
-        .all()
+    if start_date is None:
+        accounts_transaction = db.query(
+            models.SavingsTransaction.transaction_date,
+            models.SavingsTransaction.narration,
+            models.Users.username,
+            models.SavingsTransaction.amount,
+            models.TransactionType.transactiontype_name,
+            models.SavingsTransaction.transaction_id,
+            models.SavingsTransaction.balance
+        ).select_from(models.SavingsTransaction) \
+            .join(models.TransactionType,
+                  models.SavingsTransaction.transactiontype_id == models.TransactionType.transactype_id) \
+            .join(models.Users,
+                  models.Users.id == models.SavingsTransaction.prep_by) \
+            .filter(models.SavingsTransaction.savings_acc_id == member_savings_acc_id) \
+            .order_by(desc(models.SavingsTransaction.transaction_date)) \
+            .all()
+    else:
+        accounts_transaction = db.query(
+            models.SavingsTransaction.transaction_date,
+            models.SavingsTransaction.narration,
+            models.Users.username,
+            models.SavingsTransaction.amount,
+            models.TransactionType.transactiontype_name,
+            models.SavingsTransaction.transaction_id,
+            models.SavingsTransaction.balance
+        ).select_from(models.SavingsTransaction) \
+            .join(models.TransactionType,
+                  models.SavingsTransaction.transactiontype_id == models.TransactionType.transactype_id) \
+            .join(models.Users,
+                  models.Users.id == models.SavingsTransaction.prep_by) \
+            .filter(models.SavingsTransaction.savings_acc_id == member_savings_acc_id,
+                    func.date(models.SavingsTransaction.transaction_date) >= start_date,
+                    func.date(models.SavingsTransaction.transaction_date) <= end_date) \
+            .order_by(desc(models.SavingsTransaction.transaction_date)) \
+            .all()
 
     return accounts_transaction
+
+
 
 
 # Loans
@@ -791,16 +819,117 @@ async def create_transactions_loans_request_acc(transactLoan: LoansTransaction,
         return "Transaction Complete"
 
 
+@router.get("/member/for_approval/{transaction_id}")
+async def get_member_for_approval(transaction_id: int,
+                                  user: dict = Depends(get_current_user),
+                                  db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    fg = db.query(models.Members.phone,
+                  models.Members.member_id,
+                  models.Members.firstname,
+                  models.Members.lastname,
+                  models.LoansTransaction.message,
+                  models.LoansTransaction.status) \
+        .select_from(models.MemberLoanAccount) \
+        .join(models.LoansTransaction,
+              models.LoansTransaction.loans_acc_id == models.MemberLoanAccount.id) \
+        .join(models.Members,
+              models.Members.member_id == models.MemberLoanAccount.member_id) \
+        .filter(models.LoansTransaction.transaction_id == transaction_id) \
+        .first()
+    db.commit()
+
+    associations = db.query(models.Association.association_name) \
+        .join(models.AssociationMembers,
+              models.Association.association_id == models.AssociationMembers.association_id) \
+        .filter(models.AssociationMembers.members_id == fg.member_id) \
+        .all()
+
+    # Savings Details
+    account_savings = db.query(models.MemberSavingsAccount) \
+        .select_from(models.MemberSavingsAccount) \
+        .filter(models.MemberSavingsAccount.member_id == fg.member_id) \
+        .all()
+
+    total_savings_account_balance = 0
+
+    for item in account_savings:
+        total_savings_account_balance += item.current_balance
+
+    # Loans Details
+    account_loan = db.query(models.MemberLoanAccount) \
+        .select_from(models.MemberLoanAccount) \
+        .filter(models.MemberLoanAccount.member_id == fg.member_id) \
+        .all()
+
+    total_loans_account_balance = 0
+
+    for item in account_loan:
+        if item.current_balance is None:
+            total_loans_account_balance += 0.0
+        else:
+            total_loans_account_balance += item.current_balance
+
+    # Shares Details
+    account_share = db.query(models.MemberShareAccount) \
+        .select_from(models.MemberShareAccount) \
+        .filter(models.MemberShareAccount.member_id == fg.member_id) \
+        .all()
+
+    total_share_account_balance = 0
+
+    for item in account_share:
+        total_share_account_balance += item.current_balance
+    # print(type(fg), type(total_savings_account_balance), type(total_loans_account_balance),
+    #       type(total_share_account_balance), type(associations))
+    return {
+        "Member_Details": fg,
+        "Savings_Account_Balance": total_savings_account_balance,
+        "Loans_Account_Balance": total_loans_account_balance,
+        "Shares_Account_Balance": total_share_account_balance,
+        "associations": associations
+    }
+
+
+@router.patch("/disapprove/loan/now")
+async def disapprove_loan(transaction_id: int = Form(...),
+                          user: dict = Depends(get_current_user),
+                          db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    update_data = {
+        models.LoansTransaction.status: 'Requested'
+    }
+    updated_transaction = db.query(models.LoansTransaction) \
+        .filter(models.LoansTransaction.transaction_id == transaction_id) \
+        .update(update_data)
+    db.commit()
+
+    updated_transaction = db.query(models.LoansTransaction) \
+        .filter(models.LoansTransaction.transaction_id == transaction_id) \
+        .first()
+
+    return "Loan Disapproved"
+
+
 @router.patch("/approve/loan")
 async def approve_loan(transaction_id: int = Form(...),
+                       approval_message: Optional[str] = Form(None),
                        user: dict = Depends(get_current_user),
                        db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
 
+    update_data = {
+        models.LoansTransaction.status: 'Approved',
+        models.LoansTransaction.message: approval_message
+    }
+
     updated_transaction = db.query(models.LoansTransaction) \
         .filter(models.LoansTransaction.transaction_id == transaction_id) \
-        .update({models.LoansTransaction.status: 'Approved'})
+        .update(update_data)
 
     if not updated_transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
@@ -814,40 +943,53 @@ async def approve_loan(transaction_id: int = Form(...),
     return "Loan Approved"
 
 
+def calculate_month_difference(start_date, end_date):
+    return (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
+
+
 @router.patch("/disburse/loan")
 async def disburse_loan(transaction_id: int = Form(...),
                         repayment_starts: str = Form(...),
                         num_of_weeks_to_end_payment: int = Form(...),
+                        repaymentTimes: str = Form(...),
                         user: dict = Depends(get_current_user),
                         db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
-
-    start_date = datetime.strptime(repayment_starts, '%Y-%m-%d')
-    repayment_end_datee = start_date + timedelta(weeks=num_of_weeks_to_end_payment)
-    repayment_end_date = repayment_end_datee.strftime('%Y-%m-%d')
+    if repaymentTimes == "weeks":
+        start_date = datetime.strptime(repayment_starts, '%Y-%m-%d')
+        repayment_end_datee = start_date + timedelta(weeks=num_of_weeks_to_end_payment)
+        repayment_end_date = repayment_end_datee.strftime('%Y-%m-%d')
+    elif repaymentTimes == "months":
+        start_date = datetime.strptime(repayment_starts, '%Y-%m-%d')
+        repayment_end_datee = start_date + timedelta(weeks=num_of_weeks_to_end_payment * 4)
+        repayment_end_date = repayment_end_datee.strftime('%Y-%m-%d')
+    else:
+        raise Exception('Could not process payment')
 
     loanTransaction = db.query(models.LoansTransaction) \
         .filter(models.LoansTransaction.transaction_id == transaction_id) \
         .first()
-    if loanTransaction.balance:
+
+    if repaymentTimes == "weeks":
         update_data = {
             models.LoansTransaction.status: 'Disbursed',
             models.LoansTransaction.repayment_starts: repayment_starts,
             models.LoansTransaction.repayment_ends: repayment_end_date,
-            models.LoansTransaction.balance: loanTransaction.amount + loanTransaction.balance
+            models.LoansTransaction.time: 'weeks'
         }
     else:
         update_data = {
             models.LoansTransaction.status: 'Disbursed',
             models.LoansTransaction.repayment_starts: repayment_starts,
             models.LoansTransaction.repayment_ends: repayment_end_date,
-            models.LoansTransaction.balance: loanTransaction.amount
+            models.LoansTransaction.time: 'months'
         }
 
     updated_transaction = db.query(models.LoansTransaction) \
         .filter(models.LoansTransaction.transaction_id == transaction_id) \
         .update(update_data)
+    db.commit()
 
     transaction = db.query(models.LoansTransaction) \
         .filter(models.LoansTransaction.transaction_id == transaction_id) \
@@ -862,7 +1004,8 @@ async def disburse_loan(transaction_id: int = Form(...),
         .join(models.MemberSavingsAccount,
               models.MemberSavingsAccount.member_id == models.Members.member_id) \
         .filter(models.MemberLoanAccount.id == transaction.loans_acc_id,
-                models.MemberSavingsAccount.savings_id == 2) \
+                models.MemberSavingsAccount.savings_id == 1,
+                models.MemberSavingsAccount.association_member_id == models.MemberLoanAccount.association_member_id) \
         .first()
 
     balance_account = db.query(models.MemberLoanAccount) \
@@ -874,12 +1017,16 @@ async def disburse_loan(transaction_id: int = Form(...),
               models.MemberLoanAccount.loan_id == models.LoanAccount.id) \
         .filter(models.MemberLoanAccount.id == transaction.loans_acc_id) \
         .first()
+
     current_datetime = datetime.now()
     formatted_date = current_datetime.strftime('%Y-%m-%d')
 
+    pro_fee = (app_pro_fee.proccessing_fee / 100) * loanTransaction.amount
+    app_fee = (app_pro_fee.application_fee / 100) * loanTransaction.amount
+
     charges = models.SavingsTransaction()
     charges.transactiontype_id = 2
-    charges.amount = (app_pro_fee.application_fee) + (app_pro_fee.proccessing_fee)
+    charges.amount = pro_fee + app_fee
     charges.prep_by = user.get("id")
     charges.narration = f"Debit for Application fee + Processing fee for disbursed on {formatted_date}"
     charges.transaction_date = datetime.now()
@@ -889,19 +1036,15 @@ async def disburse_loan(transaction_id: int = Form(...),
     db.flush()
     db.commit()
 
-    if not balance_account:
-        raise HTTPException(status_code=404, detail="Balance account not found")
-
-    balance_account.current_balance = (-transaction.amount)
-
-    db.commit()
-
     if not updated_transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
     # start_date = datetime.strptime(repayment_starts, '%Y-%m-%d')
     end_date = datetime.strptime(repayment_end_date, '%Y-%m-%d')
-    months_difference = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
+    if repaymentTimes == "weeks":
+        months_difference = calculate_month_difference(start_date, end_date)
+    else:
+        months_difference = num_of_weeks_to_end_payment
     period = f"{months_difference} months"
 
     interest_rate_percentage_over_a_year = db.query(models.LoanAccount) \
@@ -917,6 +1060,7 @@ async def disburse_loan(transaction_id: int = Form(...),
     amount = db.query(models.LoansTransaction) \
         .filter(models.LoansTransaction.transaction_id == transaction_id) \
         .first()
+
     price = amount.amount
     interest_rate_percentage_on_loan = interest_per_rate_month_percent * months_difference
     interest_rate_per_month_value = interest_per_rate_month_percent / 100
@@ -930,12 +1074,32 @@ async def disburse_loan(transaction_id: int = Form(...),
         interest_rate_amount=interest,
         repayment_starting_date=repayment_starts,
         repayment_ending_date=repayment_end_date,
-        application_fee=interest_rate_percentage_over_a_year.application_fee,
-        proccessing_fee=interest_rate_percentage_over_a_year.proccessing_fee,
+        application_fee=app_fee,
+        proccessing_fee=pro_fee,
         loan_transaction_id=transaction_id,
         issue_date=datetime.now()
     )
     db.add(loan_advise)
+    db.commit()
+    hj = round(price + interest, 2)
+
+    if loanTransaction.balance:
+        update_d = {
+            models.LoansTransaction.balance: -(hj + loanTransaction.balance)
+        }
+    else:
+        update_d = {
+            models.LoansTransaction.balance: -hj
+        }
+
+    update = db.query(models.LoansTransaction) \
+        .filter(models.LoansTransaction.transaction_id == transaction_id) \
+        .update(update_d)
+
+    db.commit()
+
+    balance_account.current_balance = -(balance_account.current_balance + hj)
+
     db.commit()
 
     updated_transaction = db.query(models.LoansTransaction) \
@@ -943,6 +1107,16 @@ async def disburse_loan(transaction_id: int = Form(...),
         .first()
 
     return "Loan Disbursed"
+
+
+def calculate_duration(start_date: datetime, end_date: datetime, duration_type: str) -> Union[int, None]:
+    if duration_type == "weeks":
+        total_weeks = (end_date - start_date).days // 7
+        return total_weeks + 1
+    elif duration_type == "months":
+        return (end_date.year - start_date.year) * 12 + end_date.month - start_date.month
+    else:
+        return None
 
 
 @router.get("/loan/advise/{transaction_id}")
@@ -969,9 +1143,12 @@ async def get_info_to_prepare_loan_advise(transaction_id: int,
                             models.Association.cluster_office,
                             models.Association.community_name,
                             models.LoansTransaction.amount,
+                            models.LoansTransaction.time,
                             models.LoansTransaction.transaction_date,
                             models.MemberLoanAccount.member_id,
                             models.LoanAccount.account_name,
+                            models.LoanAccount.application_fee,
+                            models.LoanAccount.proccessing_fee,
                             ) \
         .select_from(models.LoansTransaction) \
         .join(models.MemberLoanAccount,
@@ -987,7 +1164,9 @@ async def get_info_to_prepare_loan_advise(transaction_id: int,
         .filter(models.LoansTransaction.transaction_id == transaction_id) \
         .first()
 
-    amount_to_be_paid = more_details.amount
+    # print(more_details)
+
+    amount_to_be_paid = round(more_details.amount + loan_details.interest_rate_amount, 2)
     total_interest_to_be_paid = loan_details.interest_rate_amount
     date_to_start_repayment = loan_details.repayment_starting_date
     date_to_end_repayment = loan_details.repayment_ending_date
@@ -995,36 +1174,66 @@ async def get_info_to_prepare_loan_advise(transaction_id: int,
     start_date = datetime.strptime(date_to_start_repayment, '%Y-%m-%d')
     end_date = datetime.strptime(date_to_end_repayment, '%Y-%m-%d')
     total_days = (end_date - start_date).days
+    if more_details.time == "weeks":
+        total_weeks = (total_days + 6) // 7
+        amount_per_week = round(amount_to_be_paid / total_weeks, 2)
+        interest_per_week = round(total_interest_to_be_paid / total_weeks, 2)
+        weekly_payments = []
+        current_date = start_date
+        for week in range(total_weeks):
+            while current_date.weekday() != 4:
+                current_date += timedelta(days=1)
 
-    total_weeks = (total_days + 6) // 7
-    amount_per_week = round(amount_to_be_paid / total_weeks, 2)
-    interest_per_week = round(total_interest_to_be_paid / total_weeks, 2)
-    weekly_payments = []
-    current_date = start_date
-    for week in range(total_weeks):
-        while current_date.weekday() != 4:
+            weekly_payments.append({
+                "Date": current_date.strftime('%Y-%m-%d'),
+                "Amount_to_be_Paid": amount_per_week,
+                "Interest_Amount": interest_per_week
+            })
+
             current_date += timedelta(days=1)
 
-        weekly_payments.append({
-            "Date": current_date.strftime('%Y-%m-%d'),
-            "Amount_to_be_Paid": amount_per_week,
-            "Interest_Amount": interest_per_week
-        })
+        total_amount_per_week = round(sum(payment["Amount_to_be_Paid"] for payment in weekly_payments), 2)
+        total_interest_per_week = round(sum(payment["Interest_Amount"] for payment in weekly_payments), 2)
+        return {
+            "Loan_Details": loan_details,
+            "More_Details": more_details,
+            "Transaction_Details": transaction_details,
+            "Repayment_Schedule": weekly_payments,
+            "Amount_Total": total_amount_per_week,
+            "Interest_Total": total_interest_per_week,
+            "Total_Khraa": round(total_amount_per_week + total_interest_per_week, 2)
+        }
+    elif more_details.time == "months":
+        total_months = calculate_duration(start_date=start_date, end_date=end_date, duration_type=more_details.time)
+        amount_per_month = round(amount_to_be_paid / total_months, 2)
+        interest_per_month = round(total_interest_to_be_paid / total_months, 2)
+        monthly_payments = []
+        current_date = start_date
+        for month in range(total_months):
+            while current_date.day != 1:
+                current_date += timedelta(days=1)
 
-        current_date += timedelta(days=1)
+            monthly_payments.append({
+                "Date": current_date.strftime('%Y-%m-%d'),
+                "Amount_to_be_Paid": amount_per_month,
+                "Interest_Amount": interest_per_month
+            })
 
-    total_amount_per_week = round(sum(payment["Amount_to_be_Paid"] for payment in weekly_payments), 2)
-    total_interest_per_week = round(sum(payment["Interest_Amount"] for payment in weekly_payments), 2)
+            current_date = current_date + relativedelta(months=1)
 
-    return {
-        "Loan_Details": loan_details,
-        "More_Details": more_details,
-        "Transaction_Details": transaction_details,
-        "Repayment_Schedule": weekly_payments,
-        "Amount_Total": total_amount_per_week,
-        "Interest_Total": total_interest_per_week,
-        "Total_Khraa": round(total_amount_per_week + total_interest_per_week, 2)
-    }
+        total_amount_per_month = round(sum(payment["Amount_to_be_Paid"] for payment in monthly_payments), 2)
+        total_interest_per_month = round(sum(payment["Interest_Amount"] for payment in monthly_payments), 2)
+        return {
+            "Loan_Details": loan_details,
+            "More_Details": more_details,
+            "Transaction_Details": transaction_details,
+            "Repayment_Schedule": monthly_payments,
+            "Amount_Total": total_amount_per_month,
+            "Interest_Total": total_interest_per_month,
+            "Total_Khraa": round(total_amount_per_month + total_interest_per_month, 2)
+        }
+    else:
+        pass
 
 
 @router.get("/transaction/loan/{member_loans_acc_id}")
@@ -1049,16 +1258,7 @@ async def get_one_loan_accounts_transactions(member_loans_acc_id: int,
         .join(models.Users,
               models.Users.id == models.LoansTransaction.prep_by) \
         .filter(models.LoansTransaction.loans_acc_id == member_loans_acc_id) \
-        .order_by(desc(models.LoansTransaction.transaction_id)) \
-        .group_by(
-        models.LoansTransaction.transaction_date,
-        models.LoansTransaction.narration,
-        models.Users.username,
-        models.LoansTransaction.amount,
-        models.TransactionType.transactiontype_name,
-        models.LoansTransaction.transaction_id,
-        models.LoansTransaction.status
-    ) \
+        .order_by(desc(models.LoansTransaction.transaction_date)) \
         .all()
 
     return accounts_transaction
@@ -1095,6 +1295,10 @@ async def create_transactions_shares_acc(transactShare: SharesTransaction,
         .filter(models.MemberShareAccount.id == transactShare.shares_acc_id) \
         .first()
 
+    shareValuue = db.query(models.MemberShareAccount) \
+        .filter(models.MemberShareAccount.id == transactShare.shares_acc_id) \
+        .first()
+
     stamp = transactShare.Amount * shareValue.share_value
     transactions_models = models.SharesTransaction()
     transactions_models.transactiontype_id = transactShare.transactiontype_id
@@ -1103,7 +1307,7 @@ async def create_transactions_shares_acc(transactShare: SharesTransaction,
     transactions_models.narration = transactShare.narration
     transactions_models.shares_acc_id = transactShare.shares_acc_id
     transactions_models.transaction_date = datetime.now()
-    transactions_models.balance = shareValue.current_balance + stamp
+    transactions_models.balance = shareValuue.current_balance + stamp
 
     db.add(transactions_models)
     db.flush()
@@ -1140,7 +1344,7 @@ async def create_transactions_shares_acc(transactShare: SharesTransaction,
 
     years_difference = (end_date.year - start_date.year)
     months_difference = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
-    print(years_difference, months_difference)
+    # print(years_difference, months_difference)
     interestPercentagePerYear = db.query(models.ShareAccount) \
         .select_from(models.SharesTransaction) \
         .join(models.MemberShareAccount,
@@ -1160,7 +1364,7 @@ async def create_transactions_shares_acc(transactShare: SharesTransaction,
     elif years_difference == 1:
         # print("years_difference == 1")
         period = "1 year"
-        interest_rate_percent = (interestPercentagePerYear.interest_amt)
+        interest_rate_percent = interestPercentagePerYear.interest_amt
         interestRateValue = interest_rate_percent / 100
         interest_rate_amount = interestRateValue * 1
         interest = price * interest_rate_amount
@@ -1194,16 +1398,18 @@ class SharesTransactionWith(BaseModel):
     shares_acc_id: int
 
 
-@router.post("/transaction/share")
+@router.post("/transaction/share/wit")
 async def create_transactions_shares_acc_withdrawal(transactShare: SharesTransactionWith,
                                                     user: dict = Depends(get_current_user),
                                                     db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
-    shareValue = db.query(models.ShareAccount.share_value,
-                          models.MemberShareAccount.current_balance) \
-        .select_from(models.ShareAccount) \
+    shareValue = db.query(models.ShareAccount) \
         .join(models.MemberShareAccount, models.ShareAccount.id == models.MemberShareAccount.share_id) \
+        .filter(models.MemberShareAccount.id == transactShare.shares_acc_id) \
+        .first()
+
+    shareValuue = db.query(models.MemberShareAccount) \
         .filter(models.MemberShareAccount.id == transactShare.shares_acc_id) \
         .first()
 
@@ -1215,7 +1421,7 @@ async def create_transactions_shares_acc_withdrawal(transactShare: SharesTransac
     transactions_models.narration = transactShare.narration
     transactions_models.shares_acc_id = transactShare.shares_acc_id
     transactions_models.transaction_date = datetime.now()
-    transactions_models.balance = shareValue.current_balance - stamp
+    transactions_models.balance = shareValuue.current_balance - stamp
 
     db.add(transactions_models)
     db.flush()
@@ -1295,15 +1501,7 @@ async def get_one_shares_account_transactions(member_shares_acc_id: int,
         .join(models.Users,
               models.Users.id == models.SharesTransaction.prep_by) \
         .filter(models.SharesTransaction.shares_acc_id == member_shares_acc_id) \
-        .order_by(desc(models.SharesTransaction.transaction_id)) \
-        .group_by(
-        models.SharesTransaction.transaction_date,
-        models.SharesTransaction.narration,
-        models.Users.username,
-        models.SharesTransaction.amount,
-        models.TransactionType.transactiontype_name,
-        models.SharesTransaction.transaction_id
-    ) \
+        .order_by(desc(models.SharesTransaction.transaction_date)) \
         .all()
 
     return accounts_transaction
@@ -1360,6 +1558,10 @@ class TransferSavings(BaseModel):
     Amount: float
     savings_acc_id: int
     to_member_account_id: int
+    period: Optional[float]
+    on_due_date: Optional[str]
+    spending_means: Optional[str]
+    account_name: Optional[str]
 
 
 @router.post("/transfer")
@@ -1443,7 +1645,7 @@ async def transfers_in_savings_account(tranfer: TransferSavings,
             transfer_from.narration = f"Transferred to: {to_acc.firstname} {to_acc.lastname}'s {to_acc.account_name} account"
             transfer_from.savings_acc_id = tranfer.savings_acc_id
             transfer_from.transactiontype_id = 2
-            transfer_from.balance = from_acc.current_balance + tranfer.Amount
+            transfer_from.balance = from_acc.current_balance - tranfer.Amount
             transfer_from.transaction_date = datetime.now()
             transfer_from.prep_by = user.get("id")
             db.add(transfer_from)
@@ -1468,7 +1670,7 @@ async def transfers_in_savings_account(tranfer: TransferSavings,
         to_acc = db.query(models.Members.firstname,
                           models.Members.lastname,
                           models.ShareAccount.account_name,
-                          models.MemberShareAccount) \
+                          models.MemberShareAccount.current_balance) \
             .select_from(models.MemberShareAccount) \
             .join(models.Members, models.MemberShareAccount.member_id == models.Members.member_id) \
             .join(models.ShareAccount, models.ShareAccount.id == models.MemberShareAccount.share_id) \
@@ -1486,34 +1688,51 @@ async def transfers_in_savings_account(tranfer: TransferSavings,
             .first()
 
     if tranfer.Amount <= from_acc.current_balance:
+        share_value = await get_share_value(member_shares_acc_id=tranfer.to_member_account_id,
+                                      user=user,
+                                      db=db)
+
         transfer_from = models.SavingsTransaction()
-        transfer_from.amount = tranfer.Amount
+        transfer_from.amount = tranfer.Amount * share_value.share_value
         transfer_from.narration = f"Transferred to: {to_acc.firstname} {to_acc.lastname}'s {to_acc.account_name} account"
         transfer_from.savings_acc_id = tranfer.savings_acc_id
         transfer_from.transactiontype_id = 2
-        transfer_from.balance = from_acc.current_balance + tranfer.Amount
+        transfer_from.balance = from_acc.current_balance - tranfer.Amount
         transfer_from.transaction_date = datetime.now()
         transfer_from.prep_by = user.get("id")
         db.add(transfer_from)
         db.commit()
 
-        trn_to = models.SharesTransaction()
-        trn_to.transactiontype_id = 1
-        trn_to.amount = tranfer.Amount
-        trn_to.narration = f"Purchased from: {from_acc.firstname} {from_acc.lastname}'s {from_acc.account_name} account"
-        trn_to.shares_acc_id = tranfer.to_member_account_id
-        trn_to.prep_by = user.get("id")
-        trn_to.balance = to_acc.current_balance + tranfer.Amount
-        trn_to.transaction_date = datetime.now()
-        db.add(trn_to)
-        db.commit()
+        riri = SharesTransaction(
+            transactiontype_id=1,
+            Amount=tranfer.Amount,
+            narration=f"Purchased from: {from_acc.firstname} {from_acc.lastname}'s {from_acc.account_name} account",
+            shares_acc_id=tranfer.to_member_account_id,
+            period=tranfer.period,
+            on_due_date=tranfer.on_due_date,
+            spending_means=tranfer.spending_means,
+            account_name=tranfer.account_name
+        )
+
+        await create_transactions_shares_acc(
+            transactShare=riri,
+            user=user,
+            db=db
+        )
+
         return f"Transfer Complete"
     else:
         raise insufficient_balance()
 
 
-@router.get("/transfer/info/{member_id}")
-async def get_info_for_transfer(member_id,
+class Info_All(BaseModel):
+    member_id: int
+    account_name: Optional[str]
+    type: Optional[str]
+
+
+@router.post("/transfer/info")
+async def get_info_for_transfer(data: Info_All,
                                 user: dict = Depends(get_current_user),
                                 db: Session = Depends(get_db)):
     if user is None:
@@ -1530,7 +1749,7 @@ async def get_info_for_transfer(member_id,
         .join(models.AssociationMembers,
               models.AssociationMembers.association_members_id == models.MemberSavingsAccount.association_member_id) \
         .join(models.Association, models.Association.association_id == models.AssociationMembers.association_id) \
-        .filter(models.MemberSavingsAccount.member_id != member_id) \
+        .filter(models.MemberSavingsAccount.member_id != data.member_id) \
         .all()
 
     individual_accounts = db.query(models.MemberSavingsAccount.id,
@@ -1542,20 +1761,33 @@ async def get_info_for_transfer(member_id,
         .join(models.SavingsAccount, models.SavingsAccount.id == models.MemberSavingsAccount.savings_id) \
         .outerjoin(models.AssociationMembers, models.Members.member_id == models.AssociationMembers.members_id) \
         .filter(models.AssociationMembers.members_id.is_(None)) \
-        .filter(models.MemberSavingsAccount.member_id != member_id) \
+        .filter(models.MemberSavingsAccount.member_id != data.member_id) \
         .all()
-
-    my_savings = db.query(models.MemberSavingsAccount.id,
-                          models.Association.association_name,
-                          models.SavingsAccount.account_name) \
-        .select_from(models.MemberSavingsAccount) \
-        .join(models.Members, models.Members.member_id == models.MemberSavingsAccount.member_id) \
-        .join(models.SavingsAccount, models.SavingsAccount.id == models.MemberSavingsAccount.savings_id) \
-        .join(models.AssociationMembers,
-              models.AssociationMembers.association_members_id == models.MemberSavingsAccount.association_member_id) \
-        .join(models.Association, models.Association.association_id == models.AssociationMembers.association_id) \
-        .filter(models.MemberSavingsAccount.member_id == member_id) \
-        .all()
+    if data.account_name and data.type == "filter_my_savings":
+        my_savings = db.query(models.MemberSavingsAccount.id,
+                              models.Association.association_name,
+                              models.SavingsAccount.account_name) \
+            .select_from(models.MemberSavingsAccount) \
+            .join(models.Members, models.Members.member_id == models.MemberSavingsAccount.member_id) \
+            .join(models.SavingsAccount, models.SavingsAccount.id == models.MemberSavingsAccount.savings_id) \
+            .join(models.AssociationMembers,
+                  models.AssociationMembers.association_members_id == models.MemberSavingsAccount.association_member_id) \
+            .join(models.Association, models.Association.association_id == models.AssociationMembers.association_id) \
+            .filter(models.MemberSavingsAccount.member_id == data.member_id) \
+            .filter(models.SavingsAccount.account_name.like(f"%{data.account_name}%")) \
+            .all()
+    else:
+        my_savings = db.query(models.MemberSavingsAccount.id,
+                              models.Association.association_name,
+                              models.SavingsAccount.account_name) \
+            .select_from(models.MemberSavingsAccount) \
+            .join(models.Members, models.Members.member_id == models.MemberSavingsAccount.member_id) \
+            .join(models.SavingsAccount, models.SavingsAccount.id == models.MemberSavingsAccount.savings_id) \
+            .join(models.AssociationMembers,
+                  models.AssociationMembers.association_members_id == models.MemberSavingsAccount.association_member_id) \
+            .join(models.Association, models.Association.association_id == models.AssociationMembers.association_id) \
+            .filter(models.MemberSavingsAccount.member_id == data.member_id) \
+            .all()
 
     # Loans Accounts
 
@@ -1570,7 +1802,7 @@ async def get_info_for_transfer(member_id,
         .join(models.AssociationMembers,
               models.AssociationMembers.association_members_id == models.MemberLoanAccount.association_member_id) \
         .join(models.Association, models.Association.association_id == models.AssociationMembers.association_id) \
-        .filter(models.MemberLoanAccount.member_id != member_id) \
+        .filter(models.MemberLoanAccount.member_id != data.member_id) \
         .all()
 
     individual_loan_accounts = db.query(models.MemberLoanAccount.id,
@@ -1582,20 +1814,33 @@ async def get_info_for_transfer(member_id,
         .join(models.LoanAccount, models.LoanAccount.id == models.MemberLoanAccount.loan_id) \
         .outerjoin(models.AssociationMembers, models.Members.member_id == models.AssociationMembers.members_id) \
         .filter(models.AssociationMembers.members_id.is_(None)) \
-        .filter(models.MemberLoanAccount.member_id != member_id) \
+        .filter(models.MemberLoanAccount.member_id != data.member_id) \
         .all()
-
-    my_loans = db.query(models.MemberLoanAccount.id,
-                        models.Association.association_name,
-                        models.LoanAccount.account_name) \
-        .select_from(models.MemberLoanAccount) \
-        .join(models.Members, models.Members.member_id == models.MemberLoanAccount.member_id) \
-        .join(models.LoanAccount, models.LoanAccount.id == models.MemberLoanAccount.loan_id) \
-        .join(models.AssociationMembers,
-              models.AssociationMembers.association_members_id == models.MemberLoanAccount.association_member_id) \
-        .join(models.Association, models.Association.association_id == models.AssociationMembers.association_id) \
-        .filter(models.MemberLoanAccount.member_id == member_id) \
-        .all()
+    if data.account_name and data.type == "filter_my_loans":
+        my_loans = db.query(models.MemberLoanAccount.id,
+                            models.Association.association_name,
+                            models.LoanAccount.account_name) \
+            .select_from(models.MemberLoanAccount) \
+            .join(models.Members, models.Members.member_id == models.MemberLoanAccount.member_id) \
+            .join(models.LoanAccount, models.LoanAccount.id == models.MemberLoanAccount.loan_id) \
+            .join(models.AssociationMembers,
+                  models.AssociationMembers.association_members_id == models.MemberLoanAccount.association_member_id) \
+            .join(models.Association, models.Association.association_id == models.AssociationMembers.association_id) \
+            .filter(models.MemberLoanAccount.member_id == data.member_id,
+                    models.LoanAccount.account_name.like(f"%{data.account_name}%")) \
+            .all()
+    else:
+        my_loans = db.query(models.MemberLoanAccount.id,
+                            models.Association.association_name,
+                            models.LoanAccount.account_name) \
+            .select_from(models.MemberLoanAccount) \
+            .join(models.Members, models.Members.member_id == models.MemberLoanAccount.member_id) \
+            .join(models.LoanAccount, models.LoanAccount.id == models.MemberLoanAccount.loan_id) \
+            .join(models.AssociationMembers,
+                  models.AssociationMembers.association_members_id == models.MemberLoanAccount.association_member_id) \
+            .join(models.Association, models.Association.association_id == models.AssociationMembers.association_id) \
+            .filter(models.MemberLoanAccount.member_id == data.member_id) \
+            .all()
 
     # Shares Accounts
 
@@ -1610,7 +1855,7 @@ async def get_info_for_transfer(member_id,
         .join(models.AssociationMembers,
               models.AssociationMembers.association_members_id == models.MemberShareAccount.association_member_id) \
         .join(models.Association, models.Association.association_id == models.AssociationMembers.association_id) \
-        .filter(models.MemberShareAccount.member_id != member_id) \
+        .filter(models.MemberShareAccount.member_id != data.member_id) \
         .all()
 
     individual_share_accounts = db.query(models.MemberShareAccount.id,
@@ -1622,20 +1867,33 @@ async def get_info_for_transfer(member_id,
         .join(models.ShareAccount, models.ShareAccount.id == models.MemberShareAccount.share_id) \
         .outerjoin(models.AssociationMembers, models.Members.member_id == models.AssociationMembers.members_id) \
         .filter(models.AssociationMembers.members_id.is_(None)) \
-        .filter(models.MemberShareAccount.member_id != member_id) \
+        .filter(models.MemberShareAccount.member_id != data.member_id) \
         .all()
-
-    my_shares = db.query(models.MemberShareAccount.id,
-                         models.Association.association_name,
-                         models.ShareAccount.account_name) \
-        .select_from(models.MemberShareAccount) \
-        .join(models.Members, models.Members.member_id == models.MemberShareAccount.member_id) \
-        .join(models.ShareAccount, models.ShareAccount.id == models.MemberShareAccount.share_id) \
-        .join(models.AssociationMembers,
-              models.AssociationMembers.association_members_id == models.MemberShareAccount.association_member_id) \
-        .join(models.Association, models.Association.association_id == models.AssociationMembers.association_id) \
-        .filter(models.MemberShareAccount.member_id == member_id) \
-        .all()
+    if data.account_name and data.type == "filter_my_share":
+        my_shares = db.query(models.MemberShareAccount.id,
+                             models.Association.association_name,
+                             models.ShareAccount.account_name) \
+            .select_from(models.MemberShareAccount) \
+            .join(models.Members, models.Members.member_id == models.MemberShareAccount.member_id) \
+            .join(models.ShareAccount, models.ShareAccount.id == models.MemberShareAccount.share_id) \
+            .join(models.AssociationMembers,
+                  models.AssociationMembers.association_members_id == models.MemberShareAccount.association_member_id) \
+            .join(models.Association, models.Association.association_id == models.AssociationMembers.association_id) \
+            .filter(models.MemberShareAccount.member_id == data.member_id,
+                    models.ShareAccount.account_name.like(f"%{data.account_name}%")) \
+            .all()
+    else:
+        my_shares = db.query(models.MemberShareAccount.id,
+                             models.Association.association_name,
+                             models.ShareAccount.account_name) \
+            .select_from(models.MemberShareAccount) \
+            .join(models.Members, models.Members.member_id == models.MemberShareAccount.member_id) \
+            .join(models.ShareAccount, models.ShareAccount.id == models.MemberShareAccount.share_id) \
+            .join(models.AssociationMembers,
+                  models.AssociationMembers.association_members_id == models.MemberShareAccount.association_member_id) \
+            .join(models.Association, models.Association.association_id == models.AssociationMembers.association_id) \
+            .filter(models.MemberShareAccount.member_id == data.member_id) \
+            .all()
 
     return {
         "All_Savings_Acc": all_savings,

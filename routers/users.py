@@ -30,7 +30,6 @@ def get_db():
 
 class UserVerification(BaseModel):
     username: str
-    password: str
     new_password: str
 
 
@@ -164,6 +163,13 @@ async def create_new_role(role_name: str = Form(...),
 
     return "New Role Created"
 
+@router.get("/user/society")
+async def get_user_soc(user: dict = Depends(get_current_user),
+                       db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    soc = db.query(models.Users).filter(models.Users.id == user.get("id")).first()
+    return {"Soc": soc.society_id}
 
 @router.delete("/delete/{role_id}")
 async def delete_role(role_id: int,
@@ -311,6 +317,7 @@ async def get_all_users(user: dict = Depends(get_current_user),
                           models.UserInfo.gender,
                           models.UserInfo.phone,
                           models.UserInfo.address,
+                          models.Users.hashed_password,
                           models.UserInfo.dob,
                           models.UserInfo.marital_status,
                           models.UserInfo.sinn_number,
@@ -318,9 +325,11 @@ async def get_all_users(user: dict = Depends(get_current_user),
                           models.UserInfo.account_number,
                           models.UserInfo.bank_name,
                           models.UserInfo.basic_salary,
-                          models.UserRoles.role_name) \
+                          models.UserRoles.role_name,
+                          models.Society.society) \
         .select_from(models.Users) \
         .join(models.UserInfo, models.UserInfo.users_id == models.Users.id) \
+        .join(models.Society, models.Society.id == models.Users.society_id) \
         .outerjoin(models.UserRoles, models.Users.role_id == models.UserRoles.id) \
         .filter(models.Users.id != user.get("id")) \
         .all()
@@ -337,6 +346,7 @@ async def get_all_users(user: dict = Depends(get_current_user),
             "email": user_one.email,
             "id": user_one.id,
             "role": user_one.role_name,
+            "password": user_one.hashed_password,
             "userImage": image,
             "gender": user_one.gender,
             "phone": user_one.phone,
@@ -349,6 +359,7 @@ async def get_all_users(user: dict = Depends(get_current_user),
             "account_number": user_one.account_number,
             "bank_name": user_one.bank_name,
             "basic_salary": user_one.basic_salary,
+            "society": user_one.society,
         })
 
     return data
@@ -404,14 +415,9 @@ async def user_password_change(user_verification: UserVerification, user: dict =
         .first()
 
     if user_model is not None:
-        if user_verification.username == user_model.username and verify_password(
-                user_verification.password,
-                user_model.hashed_password):
-            user_model.hashed_password = get_password_hash(user_verification.new_password)
-            db.add(user_model)
-            db.commit()
-            return 'Succesfull'
-    return 'Invalid user or request'
+        user_model.hashed_password = user_verification.new_password
+        db.commit()
+        return 'Password Changed Successfully'
 
 
 @router.delete("/user/delete/{user_id}")
@@ -423,6 +429,9 @@ async def delete_user(user_id: int,
 
     if user_model is None:
         return "Invalid user or request"
+
+    db.query(models.UserAccount).filter(models.UserAccount.user_id == user_id).delete()
+    db.commit()
     db.query(models.UserInfo).filter(models.UserInfo.users_id == user_id).delete()
     db.commit()
     db.query(models.Users).filter(models.Users.id == user_id).delete()

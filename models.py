@@ -16,10 +16,13 @@ class Users(Base):
     hashed_password = Column(String)
     role_id = Column(Integer, ForeignKey("user_roles.id"))
     date_joined = Column(DateTime)
+    society_id = Column(Integer, ForeignKey("society.id"))
 
+    soc = relationship("Society", back_populates="usesoc")
     savings_transactions = relationship("SavingsTransaction", back_populates="prepared_by")
     loans_transactions = relationship("LoansTransaction", back_populates="prepared_by")
     shares_transactions = relationship("SharesTransaction", back_populates="prepared_by")
+    momos_transactions = relationship("MomoAccountTransactions", back_populates="prepared_by")
     info = relationship("UserInfo", back_populates="user")
     user_staff = relationship("Association", foreign_keys="Association.staff_userid", back_populates="staff_user")
     user_creator = relationship("Association", foreign_keys="Association.created_by", back_populates="creator")
@@ -43,9 +46,9 @@ class UserInfo(Base):
     users_id = Column(Integer, ForeignKey("users.id"))
     marital_status = Column(String)
     sinn_number = Column(String)
-    basic_salary = Column(Float)
+    basic_salary = Column(Float, nullable=True)
     bank_name = Column(String)
-    account_number = Column(Integer)
+    account_number = Column(Integer, nullable=True)
     account_name = Column(String)
 
     user = relationship("Users", back_populates="info")
@@ -167,28 +170,25 @@ class Members(Base):
 
     member_id = Column(Integer, primary_key=True, index=True)
     firstname = Column(String)
-    middlename = Column(String)
-    lastname = Column(String)
-    dob = Column(Date)
+    middlename = Column(String, nullable=True)
+    lastname = Column(String, nullable=True)
+    dob = Column(Date, nullable=True)
     gender = Column(String)
-    phone = Column(String)
-    otherPhone = Column(String)
-    address = Column(String)
-    otherAddress = Column(String)
-    ghcardnumber = Column(String, unique=True)
-    ghCardImage = Column(LargeBinary)
-    memberImage = Column(LargeBinary)
-    nextOfKin = Column(String)
-    otherName = Column(String)
-    commonname = Column(String)
-    MaritalStatus = Column(String)
-    EducationLevel = Column(String)
-    Town = Column(String)
-    ruralOrUrban = Column(String)
+    phone = Column(String, nullable=True)
+    otherPhone = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    otherAddress = Column(String, nullable=True)
+    ghcardnumber = Column(String, nullable=True)
+    ghCardImage = Column(LargeBinary, nullable=True)
+    memberImage = Column(LargeBinary, nullable=True)
+    nextOfKin = Column(String, nullable=True)
+    otherName = Column(String, nullable=True)
+    commonname = Column(String, nullable=True)
+    MaritalStatus = Column(String, nullable=True)
+    EducationLevel = Column(String, nullable=True)
+    Town = Column(String, nullable=True)
+    ruralOrUrban = Column(String, nullable=True)
 
-    __table_args__ = (
-        UniqueConstraint('ghcardnumber', name='card_number_unique'),
-    )
 
     meaccount = relationship("MemberShareAccount", back_populates="meid")
     member_members = relationship("MemberLoanAccount", back_populates="membersowwn")
@@ -429,6 +429,7 @@ class Society(Base):
     id = Column(Integer, primary_key=True, index=True)
     society = Column(String)
 
+    usesoc = relationship("Users", back_populates="soc")
     association = relationship("AssociationType", back_populates="society")
     accbank = relationship("SocietyBankAccounts", back_populates="bankacc")
     watertank = relationship("CommodityAccount", back_populates="assohouse")
@@ -471,7 +472,7 @@ class Association(Base):
     community_name = Column(String)
     open_date = Column(Date)
     facilitator_userid = Column(Integer, ForeignKey("users.id"))
-    association_email = Column(String)
+    association_email = Column(String, nullable=True)
     cluster_office = Column(String)
     staff_userid = Column(Integer, ForeignKey("users.id"))
     created_by = Column(Integer, ForeignKey("users.id"))
@@ -483,6 +484,7 @@ class Association(Base):
     leader = relationship("AssociationLeaders", back_populates="associa")
     asoAc = relationship("MomoAccountAssociation", back_populates="momo")
     asoCashAc = relationship("CashAssociationAccount", back_populates="cash")
+    momo_transactions = relationship("MomoAccountTransactions", back_populates="momo_account")
 
 
 class CashAssociationAccount(Base):
@@ -497,6 +499,7 @@ class CashAssociationAccount(Base):
     cash_value = Column(Float)
     withdrawal_value = Column(Float)
     transfers_value = Column(Float)
+    loan_disbursed = Column(Float)
 
     cash = relationship("Association", back_populates="asoCashAc")
 
@@ -507,16 +510,31 @@ class MomoAccountAssociation(Base):
     id = Column(Integer, primary_key=True, index=True)
     date = Column(Date)
     momo_bal = Column(Float)
-    momo_loans_bal = Column(Float)
-    momo_shares_bal = Column(Float)
     association_id = Column(Integer, ForeignKey("association.association_id"))
     status = Column(String)
     button = Column(String)
+    current_balance = Column(Float)
 
     momo = relationship("Association", back_populates="asoAc")
     ba = relationship("ReconciliationNote", back_populates="mo")
     conre = relationship("ReconciliationChats", back_populates="recon")
 
+
+class MomoAccountTransactions(Base):
+    __tablename__ = "momo_account_transactions"
+
+    transaction_id = Column(Integer, primary_key=True, index=True)
+    transaction_type = Column(Integer, ForeignKey("transaction_type.transactype_id"))
+    amount = Column(Float)
+    prep_by = Column(Integer, ForeignKey("users.id"))
+    narration = Column(String)
+    transaction_date = Column(DateTime)
+    association_id = Column(Integer, ForeignKey("association.association_id"))
+    balance = Column(Float, nullable=True)
+
+    momo_account = relationship("Association", back_populates="momo_transactions")
+    transaction_style = relationship("TransactionType", back_populates="momo_style_transactions")
+    prepared_by = relationship("Users", back_populates="momos_transactions")
 
 class ReconciliationNote(Base):
     __tablename__ = "reconciliation_note"
@@ -545,6 +563,7 @@ class AssociationMembers(Base):
     association_members_id = Column(Integer, primary_key=True, index=True)
     association_id = Column(Integer, ForeignKey("association.association_id"))
     members_id = Column(Integer, ForeignKey("members.member_id"))
+    passbook_id = Column(String, nullable=True)
 
     assomem = relationship("Members", back_populates="association")
     memasso = relationship("Association", back_populates="members")
@@ -565,6 +584,7 @@ class TransactionType(Base):
     sharetransact = relationship("SharesTransaction", back_populates="transaction_type")
     tpytra = relationship("SocietyTransactions", back_populates="sotype")
     user_account_transactions = relationship("UserAccountTransactions", back_populates="transaction_type")
+    momo_style_transactions = relationship("MomoAccountTransactions", back_populates="transaction_style")
 
 
 class CommoditiesTransactionType(Base):
@@ -636,6 +656,8 @@ class LoansTransaction(Base):
     repayment_starts = Column(Date)
     repayment_ends = Column(Date)
     balance = Column(Float, nullable=True)
+    message = Column(String, nullable=True)
+    time = Column(String)
 
     loan_account = relationship("MemberLoanAccount", back_populates="loans_transactions")
     transaction_type = relationship("TransactionType", back_populates="loantransact")

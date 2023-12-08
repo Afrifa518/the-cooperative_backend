@@ -1,7 +1,7 @@
 import sys
 from datetime import datetime
 
-from sqlalchemy import desc, not_, func, select, union_all, case, literal_column
+from sqlalchemy import desc, not_, func, select, union_all, case, literal_column, and_
 
 sys.path.append("../..")
 
@@ -233,6 +233,7 @@ async def get_association_id(psb_id: int,
     ).first()
     return dd.association_id
 
+
 @router.get("/{association_id}")
 async def get_one_association(
         association_id: int,
@@ -428,9 +429,46 @@ async def get_all_societies(user: dict = Depends(get_current_user),
                             db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
-    societies = db.query(models.Society).all()
+    societies = db.query(models.Society).filter(models.Society.id != 0).all()
 
     return {"Society": societies}
+
+
+@router.get("/societies/diff")
+async def get_all_societies_diff(user: dict = Depends(get_current_user),
+                                 db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    vb = db.query(models.Users).filter(models.Users.id == user.get("id")).first()
+    if vb.society_id == 0:
+        societies = db.query(models.Society).filter(models.Society.id != 0).all()
+    else:
+        societies = db.query(models.Society).filter(models.Society.id == vb.society_id).first()
+    return {"Society": societies}
+
+
+@router.get("/check/society/asso/{association_id}")
+async def check_if_allowed_to_visit_asso(association_id,
+                                         user: dict = Depends(get_current_user),
+                                         db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    userr = db.query(models.Users).filter(models.Users.id == user.get("id")).first()
+
+    dg = db.query(models.Society) \
+        .select_from(models.Association) \
+        .join(models.AssociationType,
+              models.AssociationType.associationtype_id == models.Association.association_type_id) \
+        .join(models.Society, models.Society.id == models.AssociationType.society_id) \
+        .filter(models.Association.association_id == association_id) \
+        .first()
+
+    if userr.society_id == dg.id:
+        return "Safe"
+    elif userr.society_id == 0:
+        return "Safe"
+    else:
+        return "Opps not in Society"
 
 
 @router.get("/type/{types_id}")
@@ -448,6 +486,94 @@ async def get_association_typ_info(types_id: int,
         .all()
 
     return association_type_info, association_of_type
+
+
+class Filter_Asso(BaseModel):
+    type_id: int
+    association_name: str
+
+
+@router.post("/filter/assciation")
+async def filter_association(data: Filter_Asso,
+                             user: dict = Depends(get_current_user),
+                             db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    association_of_type = db.query(models.Association) \
+        .filter(models.Association.association_type_id == data.type_id,
+                models.Association.association_name.like(f"%{data.association_name}%")) \
+        .all()
+
+    return association_of_type
+
+
+@router.post("/shares/info")
+async def get_shares_in_association(association_id: int = Form(...),
+                                    start_date: Optional[str] = Form(None),
+                                    end_date: Optional[str] = Form(None),
+                                    user: dict = Depends(get_current_user),
+                                    db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    result = []
+
+    if start_date is None:
+        shares = db.query(models.SharesTransaction,
+                          models.ShareCert) \
+            .select_from(models.Association) \
+            .join(models.AssociationMembers,
+                  models.AssociationMembers.association_id == models.Association.association_id) \
+            .join(models.Members,
+                  models.Members.member_id == models.AssociationMembers.members_id) \
+            .join(models.MemberShareAccount,
+                  models.MemberShareAccount.association_member_id == models.AssociationMembers.association_members_id) \
+            .join(models.SharesTransaction,
+                  models.SharesTransaction.shares_acc_id == models.MemberShareAccount.id) \
+            .join(models.ShareCert,
+                  models.ShareCert.share_transaction_id == models.SharesTransaction.transaction_id) \
+            .filter(models.AssociationMembers.association_id == association_id,
+                    models.SharesTransaction.transactiontype_id == 1) \
+            .order_by(desc(models.SharesTransaction.transaction_id)) \
+            .all()
+    else:
+        shares = db.query(models.SharesTransaction,
+                          models.ShareCert) \
+            .select_from(models.Association) \
+            .join(models.AssociationMembers,
+                  models.AssociationMembers.association_id == models.Association.association_id) \
+            .join(models.Members,
+                  models.Members.member_id == models.AssociationMembers.members_id) \
+            .join(models.MemberShareAccount,
+                  models.MemberShareAccount.association_member_id == models.AssociationMembers.association_members_id) \
+            .join(models.SharesTransaction,
+                  models.SharesTransaction.shares_acc_id == models.MemberShareAccount.id) \
+            .join(models.ShareCert,
+                  models.ShareCert.share_transaction_id == models.SharesTransaction.transaction_id) \
+            .filter(models.AssociationMembers.association_id == association_id,
+                    func.date(models.SharesTransaction.transaction_date) >= start_date,
+                    func.date(models.SharesTransaction.transaction_date) <= end_date,
+                    models.SharesTransaction.transactiontype_id == 1) \
+            .order_by(desc(models.SharesTransaction.transaction_id)) \
+            .all()
+
+    for share in shares:
+        # srt = datetime.strftime(share.ShareCert.starting_date)
+        result.append({
+            "Transaction_id": share.SharesTransaction.transaction_id,
+            "Amount": share.SharesTransaction.amount,
+            "Prepared_by": share.SharesTransaction.prepared_by.username,
+            "Narration": share.SharesTransaction.narration,
+            "Transaction_date": share.SharesTransaction.transaction_date,
+            "Member_name": share.SharesTransaction.shares_accounts.meid.firstname + " " + share.SharesTransaction.shares_accounts.meid.lastname,
+            "Member_id": share.SharesTransaction.shares_accounts.meid.member_id,
+            "Period": share.ShareCert.period,
+            "Total_Interest": share.ShareCert.interest_rate_amount,
+            # "Weeks_Left":  - share.ShareCert.ending_date
+        })
+
+    return result
 
 
 @router.get("/loans/info/{association_id}")
@@ -469,6 +595,48 @@ async def get_requested_loans_in_association(association_id: int,
               models.LoansTransaction.loans_acc_id == models.MemberLoanAccount.id) \
         .filter(models.LoansTransaction.status == 'Requested',
                 models.AssociationMembers.association_id == association_id) \
+        .all()
+
+    results = []
+    for loan in loans:
+        results.append({
+            "Transaction_id": loan.transaction_id,
+            "Amount": loan.amount,
+            "Prepared_by": loan.prepared_by.username,
+            "Narration": loan.narration,
+            "Transaction_date": loan.transaction_date,
+            "Member_name": loan.loan_account.membersowwn.firstname + " " + loan.loan_account.membersowwn.lastname,
+            "Member_id": loan.loan_account.membersowwn.member_id
+        })
+
+    return results
+
+
+@router.post("/loans/info")
+async def get_filtered_requested_loans_in_association(association_id: int = Form(...),
+                                                      start_date: Optional[str] = Form(None),
+                                                      end_date: Optional[str] = Form(None),
+                                                      user: dict = Depends(get_current_user),
+                                                      db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    loans = db.query(models.LoansTransaction) \
+        .select_from(models.Association) \
+        .join(models.AssociationMembers,
+              models.AssociationMembers.association_id == models.Association.association_id) \
+        .join(models.Members,
+              models.Members.member_id == models.AssociationMembers.members_id) \
+        .join(models.MemberLoanAccount,
+              models.MemberLoanAccount.association_member_id == models.AssociationMembers.association_members_id) \
+        .join(models.LoansTransaction,
+              models.LoansTransaction.loans_acc_id == models.MemberLoanAccount.id) \
+        .filter(models.LoansTransaction.status == 'Requested',
+                models.AssociationMembers.association_id == association_id,
+                func.date(models.LoansTransaction.transaction_date) >= start_date,
+                func.date(models.LoansTransaction.transaction_date) <= end_date
+                ) \
+        .order_by(desc(models.LoansTransaction.transaction_date)) \
         .all()
 
     results = []
@@ -522,6 +690,48 @@ async def get_approved_loans_in_association(association_id: int,
     return results
 
 
+@router.post("/loans/approved")
+async def get_filtered_approved_loans_in_association(association_id: int = Form(...),
+                                                     start_date: Optional[str] = Form(None),
+                                                     end_date: Optional[str] = Form(None),
+                                                     user: dict = Depends(get_current_user),
+                                                     db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    loans = db.query(models.LoansTransaction) \
+        .select_from(models.Association) \
+        .join(models.AssociationMembers,
+              models.AssociationMembers.association_id == models.Association.association_id) \
+        .join(models.Members,
+              models.Members.member_id == models.AssociationMembers.members_id) \
+        .join(models.MemberLoanAccount,
+              models.MemberLoanAccount.association_member_id == models.AssociationMembers.association_members_id) \
+        .join(models.LoansTransaction,
+              models.LoansTransaction.loans_acc_id == models.MemberLoanAccount.id) \
+        .filter(models.LoansTransaction.status == 'Approved',
+                models.AssociationMembers.association_id == association_id,
+                func.date(models.LoansTransaction.transaction_date) >= start_date,
+                func.date(models.LoansTransaction.transaction_date) <= end_date
+                ) \
+        .order_by(desc(models.LoansTransaction.transaction_date)) \
+        .all()
+
+    results = []
+    for loan in loans:
+        results.append({
+            "Transaction_id": loan.transaction_id,
+            "Amount": loan.amount,
+            "Prepared_by": loan.prepared_by.username,
+            "Narration": loan.narration,
+            "Transaction_date": loan.transaction_date,
+            "Member_name": loan.loan_account.membersowwn.firstname + " " + loan.loan_account.membersowwn.lastname,
+            "Member_id": loan.loan_account.membersowwn.member_id
+        })
+
+    return results
+
+
 @router.get("/loans/disbursed/{association_id}")
 async def get_disbursed_loans_in_association(association_id: int,
                                              user: dict = Depends(get_current_user),
@@ -541,6 +751,50 @@ async def get_disbursed_loans_in_association(association_id: int,
               models.LoansTransaction.loans_acc_id == models.MemberLoanAccount.id) \
         .filter(models.LoansTransaction.status == 'Disbursed',
                 models.AssociationMembers.association_id == association_id) \
+        .all()
+
+    results = []
+    for loan in loans:
+        results.append({
+            "Transaction_id": loan.transaction_id,
+            "Amount": loan.amount,
+            "Prepared_by": loan.prepared_by.username,
+            "Narration": loan.narration,
+            "Transaction_date": loan.transaction_date,
+            "Repayment_starts": loan.repayment_starts,
+            "Repayment_ends": loan.repayment_ends,
+            "Member_name": loan.loan_account.membersowwn.firstname + " " + loan.loan_account.membersowwn.lastname,
+            "Member_id": loan.loan_account.membersowwn.member_id
+        })
+
+    return results
+
+
+@router.post("/loans/disbursed")
+async def get_filtered_disbursed_loans_in_association(association_id: int = Form(...),
+                                                      start_date: Optional[str] = Form(None),
+                                                      end_date: Optional[str] = Form(None),
+                                                      user: dict = Depends(get_current_user),
+                                                      db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    loans = db.query(models.LoansTransaction) \
+        .select_from(models.Association) \
+        .join(models.AssociationMembers,
+              models.AssociationMembers.association_id == models.Association.association_id) \
+        .join(models.Members,
+              models.Members.member_id == models.AssociationMembers.members_id) \
+        .join(models.MemberLoanAccount,
+              models.MemberLoanAccount.association_member_id == models.AssociationMembers.association_members_id) \
+        .join(models.LoansTransaction,
+              models.LoansTransaction.loans_acc_id == models.MemberLoanAccount.id) \
+        .filter(models.LoansTransaction.status == 'Disbursed',
+                models.AssociationMembers.association_id == association_id,
+                func.date(models.LoansTransaction.transaction_date) >= start_date,
+                func.date(models.LoansTransaction.transaction_date) <= end_date
+                ) \
+        .order_by(desc(models.LoansTransaction.transaction_date)) \
         .all()
 
     results = []
@@ -598,10 +852,12 @@ async def get_association_passbook_info_yeah(association_id: int,
         data["Starting_Loans"] = yestaday.cash_loans_bal
         data["Current_Loans"] = 0
         data["Addition_Subtraction_in_Loans"] = 0 + yestaday.cash_loans_bal
+        data["Loan_Disbursed"] = 0 + yestaday.loan_disbursed
     else:
         data["Starting_Loans"] = yestaday.cash_loans_bal
         data["Current_Loans"] = todayy.cash_loans_bal
         data["Addition_Subtraction_in_Loans"] = todayy.cash_loans_bal + yestaday.cash_loans_bal
+        data["Loan_Disbursed"] = todayy.loan_disbursed + yestaday.loan_disbursed
 
     if todayy.cash_shares_bal is None:
         data["Starting_Shares"] = yestaday.cash_shares_bal
@@ -982,7 +1238,7 @@ async def set_cash_account_balances(association_id: int,
         .order_by(desc(models.SavingsTransaction.transaction_id)) \
         .all()
 
-    # Today's Loans
+    # Today's Loans Repayment
     todays_loan_accounts_transactions = db.query(models.Members.firstname,
                                                  models.MemberLoanAccount.id,
                                                  models.Members.lastname,
@@ -1004,6 +1260,34 @@ async def set_cash_account_balances(association_id: int,
         .join(models.Users, models.Users.id == models.LoansTransaction.prep_by) \
         .filter(models.Association.association_id == association_id,
                 models.LoansTransaction.transactiontype_id == 1,
+                models.LoansTransaction.transaction_date >= start_of_day,
+                models.LoansTransaction.transaction_date <= end_of_day
+                ) \
+        .order_by(desc(models.LoansTransaction.transaction_id)) \
+        .all()
+
+    # Today's Loans Disbursed
+    todays_loan_disbursed_accounts_transactions = db.query(models.Members.firstname,
+                                                           models.MemberLoanAccount.id,
+                                                           models.Members.lastname,
+                                                           models.Members.member_id,
+                                                           models.TransactionType.transactiontype_name,
+                                                           models.LoansTransaction.amount,
+                                                           models.LoansTransaction.transaction_date,
+                                                           models.LoansTransaction.narration,
+                                                           models.Users.username) \
+        .select_from(models.Association) \
+        .join(models.AssociationMembers, models.AssociationMembers.association_id == models.Association.association_id) \
+        .join(models.MemberLoanAccount,
+              models.MemberLoanAccount.association_member_id == models.AssociationMembers.association_members_id) \
+        .join(models.LoanAccount, models.LoanAccount.id == models.MemberLoanAccount.loan_id) \
+        .join(models.Members, models.Members.member_id == models.MemberLoanAccount.member_id) \
+        .join(models.LoansTransaction, models.LoansTransaction.loans_acc_id == models.MemberLoanAccount.id) \
+        .join(models.TransactionType,
+              models.LoansTransaction.transactiontype_id == models.TransactionType.transactype_id) \
+        .join(models.Users, models.Users.id == models.LoansTransaction.prep_by) \
+        .filter(models.Association.association_id == association_id,
+                models.LoansTransaction.transactiontype_id == 2,
                 models.LoansTransaction.transaction_date >= start_of_day,
                 models.LoansTransaction.transaction_date <= end_of_day
                 ) \
@@ -1032,13 +1316,14 @@ async def set_cash_account_balances(association_id: int,
         .join(models.Users, models.Users.id == models.SharesTransaction.prep_by) \
         .filter(models.Association.association_id == association_id,
                 models.SharesTransaction.transaction_date >= start_of_day,
-                models.SharesTransaction.transaction_date <= end_of_day
+                models.SharesTransaction.transaction_date <= end_of_day,
                 ) \
         .order_by(desc(models.SharesTransaction.transaction_id)) \
         .all()
 
     today_savings_total = sum(transaction.amount for transaction in todays_savings_accounts_transactions)
     today_loans_total = sum(transaction.amount for transaction in todays_loan_accounts_transactions)
+    today_loans_disbursed_total = sum(transaction.amount for transaction in todays_loan_disbursed_accounts_transactions)
     today_share_total = sum(transaction.amount for transaction in todays_share_accounts_transactions)
     today_withdrawals_total = sum(transaction.amount for transaction in todays_savings_accounts_withdrawals)
     todays_savings_accounts_transfers_total = sum(
@@ -1057,6 +1342,7 @@ async def set_cash_account_balances(association_id: int,
         today.cash_value = total_cash_value
         today.withdrawal_value = today_withdrawals_total
         today.transfers_value = todays_savings_accounts_transfers_total
+        today.loan_disbursed = today_loans_disbursed_total
         db.commit()
     else:
         create_today = models.CashAssociationAccount(
@@ -1067,17 +1353,323 @@ async def set_cash_account_balances(association_id: int,
             association_id=association_id,
             cash_value=total_cash_value,
             withdrawal_value=today_withdrawals_total,
-            transfers_value=todays_savings_accounts_transfers_total
+            transfers_value=todays_savings_accounts_transfers_total,
+            loan_disbursed=today_loans_disbursed_total
         )
         db.add(create_today)
         db.commit()
-    momo_details = MomoTransactions(momo_bal=0.00, association_id=association_id)
-    await set_momo_account_balances(momo_details, user=user, db=db)
+    bomn = datetime.now()
+    tdll = bomn.strftime('%Y-%m-%d')
+    dss = db.query(models.MomoAccountAssociation).order_by(desc(models.MomoAccountAssociation.id)).first()
+    df = models.MomoAccountAssociation(
+        date=tdll,
+        momo_bal=0.00,
+        association_id=association_id,
+        status="Not Reconciled",
+        button="Reconcile",
+        current_balance=dss.current_balance
+    )
+
+
+@router.get("/transfer/banks/{association_id}")
+async def make_transfers_from_momo_account_to_bank_accounts(association_id: int,
+                                                            user: dict = Depends(get_current_user),
+                                                            db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    hoj = db.query(models.SocietyBankAccounts.id,
+                   models.SocietyBankAccounts.account_name) \
+        .select_from(models.SocietyBankAccounts) \
+        .join(models.AssociationType,
+              models.AssociationType.society_id == models.SocietyBankAccounts.society_id) \
+        .join(models.Association,
+              models.Association.association_type_id == models.AssociationType.associationtype_id) \
+        .filter(models.Association.association_id == association_id) \
+        .all()
+    return hoj
+
+
+@router.post("/momo/transactions")
+async def momo_transactions(association_id: int = Form(...),
+                            start_date: Optional[str] = Form(None),
+                            end_date: Optional[str] = Form(None),
+                            user: dict = Depends(get_current_user),
+                            db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    current_date = datetime.now()
+    today_date = current_date.strftime('%Y-%m-%d')
+    if end_date or start_date:
+        trs = db.query(models.MomoAccountTransactions.transaction_date,
+                       models.MomoAccountTransactions.transaction_type,
+                       models.MomoAccountTransactions.amount,
+                       models.MomoAccountTransactions.narration,
+                       models.MomoAccountTransactions.transaction_id,
+                       models.MomoAccountTransactions.balance,
+                       models.Users.username) \
+            .join(models.Users,
+                  models.MomoAccountTransactions.prep_by == models.Users.id) \
+            .filter(
+            models.MomoAccountTransactions.association_id == association_id,
+            func.date(models.MomoAccountTransactions.transaction_date) >= start_date,
+            func.date(models.MomoAccountTransactions.transaction_date) <= end_date
+        ) \
+            .order_by(desc(models.MomoAccountTransactions.transaction_id)) \
+            .all()
+
+    else:
+        trs = db.query(models.MomoAccountTransactions.transaction_date,
+                       models.MomoAccountTransactions.transaction_type,
+                       models.MomoAccountTransactions.amount,
+                       models.MomoAccountTransactions.narration,
+                       models.MomoAccountTransactions.transaction_id,
+                       models.MomoAccountTransactions.balance,
+                       models.Users.username) \
+            .join(models.Users,
+                  models.MomoAccountTransactions.prep_by == models.Users.id) \
+            .filter(models.MomoAccountTransactions.association_id == association_id) \
+            .order_by(desc(models.MomoAccountTransactions.transaction_id)) \
+            .all()
+    # print(trs)
+    acc = db.query(models.MomoAccountAssociation) \
+        .filter(models.MomoAccountAssociation.association_id == association_id) \
+        .order_by(desc(models.MomoAccountAssociation.id)) \
+        .first()
+
+    return {"Trs": trs,
+            "Acc": acc}
+
+
+@router.get("/momo/transactions/one/{association_id}")
+async def momo_transactions_one(association_id: int,
+                                user: dict = Depends(get_current_user),
+                                db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    current_date = datetime.now()
+    today_date = current_date.strftime('%Y-%m-%d')
+    trs = db.query(models.MomoAccountTransactions.transaction_date,
+                   models.MomoAccountTransactions.transaction_type,
+                   models.MomoAccountTransactions.amount,
+                   models.MomoAccountTransactions.narration,
+                   models.MomoAccountTransactions.transaction_id,
+                   models.MomoAccountTransactions.balance,
+                   models.Users.username) \
+        .join(models.Users,
+              models.MomoAccountTransactions.prep_by == models.Users.id) \
+        .filter(models.MomoAccountTransactions.association_id == association_id) \
+        .order_by(desc(models.MomoAccountTransactions.transaction_id)) \
+        .all()
+    # print(trs)
+    acc = db.query(models.MomoAccountAssociation) \
+        .filter(models.MomoAccountAssociation.association_id == association_id) \
+        .order_by(desc(models.MomoAccountAssociation.id)) \
+        .first()
+
+    return {"Trs": trs,
+            "Acc": acc}
+
+
+class SavingTransactionnEditTrs(BaseModel):
+    transaction_id: int
+    transactiontype_idd: int
+    Amountt: float
+    narrationn: Optional[str]
+    association_id: int
+    date: str
+
+
+class SavingTransactionEditTrs(BaseModel):
+    transaction_id: int
+    Amount: float
+    narration: Optional[str]
+    association_id: int
+    balance: Optional[float]
+    date: str
+
+
+@router.post("/update/transaction/depo")
+async def edit_deposit_transactions(transactSavee: SavingTransactionEditTrs,
+                                    user: dict = Depends(get_current_user),
+                                    db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    testam = db.query(models.MomoAccountTransactions) \
+        .filter(models.MomoAccountTransactions.transaction_id == transactSavee.transaction_id) \
+        .first()
+
+    daate = testam.transaction_date
+    datea = daate.strftime('%Y-%m-%d')
+
+    prev_balance = db.query(models.MomoAccountAssociation) \
+        .filter(models.MomoAccountAssociation.association_id == transactSavee.association_id,
+                models.MomoAccountAssociation.date == datea) \
+        .first()
+
+    amount_difference = transactSavee.Amount - testam.amount
+    if transactSavee.date:
+        update_data = {
+            models.MomoAccountTransactions.amount: transactSavee.Amount,
+            models.MomoAccountTransactions.narration: transactSavee.narration,
+            models.MomoAccountTransactions.transaction_date: transactSavee.date,
+            models.MomoAccountTransactions.balance: models.MomoAccountTransactions.balance + amount_difference
+        }
+        transact = db.query(models.MomoAccountTransactions) \
+            .filter(models.MomoAccountTransactions.transaction_id == transactSavee.transaction_id) \
+            .update(update_data)
+        db.commit()
+    else:
+        date = testam.transaction_date
+        update_data = {
+            models.MomoAccountTransactions.amount: transactSavee.Amount,
+            models.MomoAccountTransactions.narration: transactSavee.narration,
+            models.MomoAccountTransactions.transaction_date: date,
+            models.MomoAccountTransactions.balance: models.MomoAccountTransactions.balance + amount_difference
+        }
+        transact = db.query(models.MomoAccountTransactions) \
+            .filter(models.MomoAccountTransactions.transaction_id == transactSavee.transaction_id) \
+            .update(update_data)
+        db.commit()
+
+    transact_data = db.query(models.MomoAccountTransactions) \
+        .filter(models.MomoAccountTransactions.transaction_id == transactSavee.transaction_id) \
+        .first()
+
+    balance_update = db.query(models.MomoAccountTransactions) \
+        .filter(and_(
+        models.MomoAccountTransactions.transaction_date > transact_data.transaction_date,
+        func.date(models.MomoAccountTransactions.transaction_date) == func.date(transact_data.transaction_date),
+        models.MomoAccountTransactions.transaction_id != transactSavee.transaction_id,
+        models.MomoAccountTransactions.association_id == transactSavee.association_id
+    )).all()
+    # print(testam.transaction_date)
+
+    if balance_update:
+        for transaction in balance_update:
+            if transaction.balance:
+                transaction.balance = transaction.balance + amount_difference
+            else:
+                transaction.balance = amount_difference
+        db.flush()
+        db.commit()
+
+        balance = db.query(models.MomoAccountTransactions) \
+            .filter(and_(
+            func.date(models.MomoAccountTransactions.transaction_date) == func.date(transact_data.transaction_date),
+            models.MomoAccountTransactions.association_id == transactSavee.association_id
+        )).order_by(desc(models.MomoAccountTransactions.transaction_id)).first()
+
+        prev_balance.momo_bal = balance.balance
+        prev_balance.current_balance = balance.balance
+        db.commit()
+
+        return "Transaction Updated Successfully"
+    else:
+        return "Transaction Updated Successfully"
+
+
+@router.delete("/delete/transaction/{transaction_id}")
+async def delete_transaction(transaction_id: int,
+                             user: dict = Depends(get_current_user),
+                             db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    db.query(models.MomoAccountTransactions).filter(
+        models.MomoAccountTransactions.transaction_id == transaction_id).delete()
+    db.commit()
+    return "Transaction Deleted"
+
+
+@router.post("/update/transaction/depo/with")
+async def edit_withdrawals_transactions(transactSavee: SavingTransactionnEditTrs,
+                                        user: dict = Depends(get_current_user),
+                                        db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    testam = db.query(models.MomoAccountTransactions) \
+        .filter(models.MomoAccountTransactions.transaction_id == transactSavee.transaction_id) \
+        .first()
+
+    daate = testam.transaction_date
+    datea = daate.strftime('%Y-%m-%d')
+
+    prev_balance = db.query(models.MomoAccountAssociation) \
+        .filter(models.MomoAccountAssociation.association_id == transactSavee.association_id,
+                models.MomoAccountAssociation.date == datea) \
+        .first()
+
+    amount_difference = transactSavee.Amountt - testam.amount
+    if transactSavee.date:
+        update_data = {
+            models.MomoAccountTransactions.amount: transactSavee.Amountt,
+            models.MomoAccountTransactions.narration: transactSavee.narrationn,
+            models.MomoAccountTransactions.transaction_date: transactSavee.date,
+            models.MomoAccountTransactions.balance: models.MomoAccountTransactions.balance - amount_difference
+        }
+        transact = db.query(models.MomoAccountTransactions) \
+            .filter(models.MomoAccountTransactions.transaction_id == transactSavee.transaction_id) \
+            .update(update_data)
+        db.commit()
+    else:
+        date = testam.transaction_date
+        update_data = {
+            models.MomoAccountTransactions.amount: transactSavee.Amountt,
+            models.MomoAccountTransactions.narration: transactSavee.narrationn,
+            models.MomoAccountTransactions.transaction_date: date,
+            models.MomoAccountTransactions.balance: models.MomoAccountTransactions.balance - amount_difference
+        }
+        transact = db.query(models.MomoAccountTransactions) \
+            .filter(models.MomoAccountTransactions.transaction_id == transactSavee.transaction_id) \
+            .update(update_data)
+        db.commit()
+
+    transact_data = db.query(models.MomoAccountTransactions) \
+        .filter(models.MomoAccountTransactions.transaction_id == transactSavee.transaction_id) \
+        .first()
+
+    balance_update = db.query(models.MomoAccountTransactions) \
+        .filter(and_(
+        models.MomoAccountTransactions.transaction_date > transact_data.transaction_date,
+        func.date(models.MomoAccountTransactions.transaction_date) == func.date(transact_data.transaction_date),
+        models.MomoAccountTransactions.transaction_id != transactSavee.transaction_id,
+        models.MomoAccountTransactions.association_id == transactSavee.association_id
+    )).all()
+    # print(testam.transaction_date)
+
+    if balance_update:
+        for transaction in balance_update:
+            if transaction.balance:
+                transaction.balance = transaction.balance - amount_difference
+            else:
+                transaction.balance = -amount_difference
+        db.flush()
+        db.commit()
+
+        balance = db.query(models.MomoAccountTransactions) \
+            .filter(and_(
+            func.date(models.MomoAccountTransactions.transaction_date) == func.date(transact_data.transaction_date),
+            models.MomoAccountTransactions.association_id == transactSavee.association_id
+        )).order_by(desc(models.MomoAccountTransactions.transaction_id)).first()
+
+        prev_balance.momo_bal = balance.balance
+        db.commit()
+
+        return "Transaction Updated Successfully"
+    else:
+        return "Transaction Updated Successfully"
 
 
 class MomoTransactions(BaseModel):
-    momo_bal: Optional[float]
+    transaction_type: int
+    amount: float
+    narration: Optional[str]
     association_id: int
+    to_account_id: Optional[int]
+    date: str
 
 
 @router.post("/momo/account")
@@ -1089,29 +1681,243 @@ async def set_momo_account_balances(momo_details: MomoTransactions,
     current_date = datetime.now()
     today_date = current_date.strftime('%Y-%m-%d')
 
+    # today = db.query(models.MomoAccountAssociation) \
+    #     .filter(models.MomoAccountAssociation.association_id == momo_details.association_id) \
+    #     .order_by(desc(models.MomoAccountAssociation.id)) \
+    #     .first()
     today = db.query(models.MomoAccountAssociation) \
         .filter(models.MomoAccountAssociation.date == today_date,
                 models.MomoAccountAssociation.association_id == momo_details.association_id) \
         .first()
-    if today:
-        today.momo_bal = momo_details.momo_bal
-        # today.momo_loans_bal = momo_details.momo_loans_bal
-        # today.momo_shares_bal = momo_details.momo_shares_bal
-        db.commit()
+
+    trntion = db.query(models.MomoAccountTransactions) \
+        .filter(func.date(models.MomoAccountTransactions.transaction_date) == func.date(momo_details.date),
+                models.MomoAccountTransactions.association_id == momo_details.association_id) \
+        .order_by(desc(models.MomoAccountTransactions.transaction_id)) \
+        .first()
+
+    if momo_details.transaction_type == 1:
+        if today:
+            frj = models.MomoAccountTransactions()
+            frj.amount = momo_details.amount
+            frj.transaction_type = momo_details.transaction_type
+            if trntion is None:
+                frj.balance = momo_details.amount
+            else:
+                frj.balance = trntion.balance + momo_details.amount
+            frj.transaction_date = momo_details.date
+            frj.narration = momo_details.narration
+            frj.prep_by = user.get("id")
+            frj.association_id = momo_details.association_id
+
+            db.add(frj)
+            db.commit()
+
+            if today.momo_bal is None:
+                today.momo_bal = momo_details.amount
+                db.commit()
+            else:
+                today.momo_bal = today.momo_bal + momo_details.amount
+                db.commit()
+
+            if today.current_balance is None:
+                today.current_balance = trntion.balance
+                db.commit()
+            else:
+                today.current_balance = today.current_balance + momo_details.amount
+                db.commit()
+
+
+        else:
+            todayy = db.query(models.MomoAccountAssociation) \
+                .filter(models.MomoAccountAssociation.association_id == momo_details.association_id) \
+                .order_by(desc(models.MomoAccountAssociation.id)) \
+                .first()
+            if todayy.current_balance:
+                bla = todayy.current_balance + momo_details.amount
+            else:
+                if todayy.current_balance == 0:
+                    bla = momo_details.amount
+                elif trntion:
+                    bla = trntion.balance
+            create_momo_details = models.MomoAccountAssociation(
+                date=today_date,
+                momo_bal=momo_details.amount,
+                association_id=momo_details.association_id,
+                status="Not Reconciled",
+                button="Reconcile",
+                current_balance=bla
+            )
+            db.add(create_momo_details)
+            db.commit()
+            frj = models.MomoAccountTransactions()
+            frj.amount = momo_details.amount
+            frj.transaction_type = momo_details.transaction_type
+            if create_momo_details.momo_bal is None:
+                frj.balance = momo_details.amount
+            else:
+                frj.balance = create_momo_details.momo_bal + momo_details.amount
+            frj.transaction_date = momo_details.date
+            frj.narration = momo_details.narration
+            frj.prep_by = user.get("id")
+            frj.association_id = momo_details.association_id
+
+            db.add(frj)
+            db.commit()
+            if create_momo_details.momo_bal is None:
+                create_momo_details.momo_bal = momo_details.amount
+                db.commit()
+            else:
+                create_momo_details.momo_bal = create_momo_details.momo_bal + momo_details.amount
+                db.commit()
+
+    elif momo_details.transaction_type == 2:
+        if today:
+            frj = models.MomoAccountTransactions()
+            frj.transaction_type = momo_details.transaction_type
+            frj.amount = momo_details.amount
+            if trntion is None:
+                frj.balance = -momo_details.amount
+            else:
+                frj.balance = trntion.balance - momo_details.amount
+
+            frj.transaction_date = momo_details.date
+            frj.narration = momo_details.narration
+            frj.prep_by = user.get("id")
+            frj.association_id = momo_details.association_id
+
+            db.add(frj)
+            db.commit()
+            if today.momo_bal is None:
+                today.momo_bal = momo_details.amount
+                db.commit()
+            else:
+                today.momo_bal = today.momo_bal - momo_details.amount
+                db.commit()
+
+            if today.current_balance is None:
+                today.current_balance = trntion.balance
+                db.commit()
+            else:
+                today.current_balance = today.current_balance - momo_details.amount
+                db.commit()
+        else:
+            todayy = db.query(models.MomoAccountAssociation) \
+                .filter(models.MomoAccountAssociation.association_id == momo_details.association_id) \
+                .order_by(desc(models.MomoAccountAssociation.id)) \
+                .first()
+            if todayy.current_balance:
+                bla = todayy.current_balance - momo_details.amount
+            else:
+                bla = trntion.balance
+            create_momo_details = models.MomoAccountAssociation(
+                date=today_date,
+                momo_bal=momo_details.amount,
+                association_id=momo_details.association_id,
+                status="Not Reconciled",
+                button="Reconcile",
+                current_balance=bla
+            )
+            db.add(create_momo_details)
+            db.commit()
+
+            frj = models.MomoAccountTransactions()
+            frj.amount = momo_details.amount
+            frj.transaction_type = momo_details.transaction_type
+            frj.balance = create_momo_details.momo_bal
+            frj.transaction_date = momo_details.date
+            frj.narration = momo_details.narration
+            frj.prep_by = user.get("id")
+            frj.association_id = momo_details.association_id
+
+            db.add(frj)
+            db.commit()
+            if create_momo_details.momo_bal is None:
+                create_momo_details.momo_bal = momo_details.amount
+                db.commit()
+            else:
+                create_momo_details.momo_bal = create_momo_details.momo_bal - momo_details.amount
+                db.commit()
     else:
-        create_momo_details = models.MomoAccountAssociation(
-            date=today_date,
-            momo_bal=momo_details.momo_bal,
-            # momo_loans_bal=momo_details.momo_loans_bal,
-            # momo_shares_bal=momo_details.momo_shares_bal,
-            association_id=momo_details.association_id,
-            status="Not Reconciled",
-            button="Reconcile"
+        bank = db.query(models.SocietyBankAccounts) \
+            .filter(models.SocietyBankAccounts.id == momo_details.to_account_id) \
+            .first()
+
+        if today:
+            frj = models.MomoAccountTransactions()
+            frj.amount = momo_details.amount
+            frj.transaction_type = 2
+            if trntion.balance is None:
+                frj.balance = -momo_details.amount
+            else:
+                frj.balance = trntion.balance - momo_details.amount
+            frj.transaction_date = momo_details.date
+            frj.narration = f"Transferred to {bank.account_name} Bank Account"
+            frj.prep_by = user.get("id")
+            frj.association_id = momo_details.association_id
+
+            db.add(frj)
+            db.commit()
+            if today.momo_bal is None:
+                today.momo_bal = momo_details.amount
+                db.commit()
+            else:
+                today.momo_bal = today.momo_bal - momo_details.amount
+                db.commit()
+
+            if today.current_balance is None:
+                today.current_balance = trntion.balance
+                db.commit()
+            else:
+                today.current_balance = today.current_balance - momo_details.amount
+                db.commit()
+        else:
+            todayy = db.query(models.MomoAccountAssociation) \
+                .filter(models.MomoAccountAssociation.association_id == momo_details.association_id) \
+                .order_by(desc(models.MomoAccountAssociation.id)) \
+                .first()
+            if todayy.current_balance:
+                bla = todayy.current_balance - momo_details.amount
+            else:
+                bla = trntion.balance
+            create_momo_details = models.MomoAccountAssociation(
+                date=today_date,
+                momo_bal=momo_details.amount,
+                association_id=momo_details.association_id,
+                status="Not Reconciled",
+                button="Reconcile",
+                current_balance=bla
+            )
+            db.add(create_momo_details)
+            db.commit()
+
+            frj = models.MomoAccountTransactions()
+            frj.transaction_type = 2
+            frj.amount = momo_details.amount
+            frj.balance = create_momo_details.momo_bal
+            frj.transaction_date = momo_details.date
+            frj.narration = f"Transferred to {bank.account_name} Bank Account"
+            frj.prep_by = user.get("id")
+            frj.association_id = momo_details.association_id
+
+            db.add(frj)
+            db.commit()
+        ass = db.query(models.Association).filter(
+            models.Association.association_id == momo_details.association_id).first()
+
+        bank_trs = models.SocietyTransactions(
+            transactiontype_id=1,
+            amount=momo_details.amount,
+            transaction_date=momo_details.date,
+            balance=bank.current_balance + momo_details.amount,
+            prep_by=user.get("id"),
+            society_account_id=momo_details.to_account_id,
+            narration=f"Recieved from {ass.association_name}'s Ecash account"
         )
-        db.add(create_momo_details)
+        db.add(bank_trs)
         db.commit()
 
-    return "Saved"
+    return "Transaction Complete"
 
 
 class Datara(BaseModel):
@@ -1226,6 +2032,7 @@ async def get_cash_account_balance(association_id: int,
                                    ) \
         .filter(models.MomoAccountAssociation.association_id == association_id,
                 models.MomoAccountAssociation.date == today_date) \
+        .order_by(desc(models.MomoAccountAssociation.id)) \
         .first()
 
     if today_ecash_amounts:
@@ -1784,11 +2591,64 @@ async def get_association_transaction_details(association_id: int,
                             models.CashAssociationAccount.id,
                             models.CashAssociationAccount.cash_savings_bal,
                             models.CashAssociationAccount.cash_loans_bal,
+                            models.CashAssociationAccount.loan_disbursed,
+                            models.CashAssociationAccount.cash_shares_bal,
+                            models.CashAssociationAccount.transfers_value,
+                            models.CashAssociationAccount.withdrawal_value,
+                            models.CashAssociationAccount.cash_value
+                            ) \
+        .filter(models.CashAssociationAccount.association_id == association_id) \
+        .order_by(desc(models.CashAssociationAccount.id)) \
+        .all()
+
+    ecash_amounts = db.query(models.MomoAccountAssociation.date,
+                             models.MomoAccountAssociation.id,
+                             models.MomoAccountAssociation.momo_bal,
+                             ) \
+        .filter(models.MomoAccountAssociation.association_id == association_id) \
+        .order_by(desc(models.MomoAccountAssociation.id)) \
+        .all()
+
+    dtat = []
+
+    for i, g in zip(cash_amounts, ecash_amounts):
+        if i.date == g.date:
+            dtat.append({
+                "id": i.id,
+                "date": i.date,
+                "cash_savings_bal": i.cash_savings_bal,
+                "cash_loans_bal": i.cash_loans_bal,
+                "cash_shares_bal": i.cash_shares_bal,
+                "cash_value": i.cash_value,
+                "momo_bal": g.momo_bal,
+                # "Withdraws": i.withdrawal_value,
+                # "Transfers": i.transfers_value
+            })
+    print(dtat)
+    return dtat
+
+
+@router.post("/transaction/sumary")
+async def get_filtered_association_transaction_details(association_id: int = Form(...),
+                                                       start_date: Optional[str] = Form(None),
+                                                       end_date: Optional[str] = Form(None),
+                                                       user: dict = Depends(get_current_user),
+                                                       db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    current_date = datetime.now()
+    today_date = current_date.strftime('%Y-%m-%d')
+
+    cash_amounts = db.query(models.CashAssociationAccount.date,
+                            models.CashAssociationAccount.id,
+                            models.CashAssociationAccount.cash_savings_bal,
+                            models.CashAssociationAccount.cash_loans_bal,
                             models.CashAssociationAccount.cash_shares_bal,
                             models.CashAssociationAccount.cash_value
                             ) \
         .filter(models.CashAssociationAccount.association_id == association_id,
-                models.CashAssociationAccount.date != today_date) \
+                models.CashAssociationAccount.date >= start_date,
+                models.CashAssociationAccount.date <= end_date) \
         .order_by(desc(models.CashAssociationAccount.id)) \
         .all()
 
@@ -1797,7 +2657,8 @@ async def get_association_transaction_details(association_id: int,
                              models.MomoAccountAssociation.momo_bal,
                              ) \
         .filter(models.MomoAccountAssociation.association_id == association_id,
-                models.MomoAccountAssociation.date != today_date) \
+                models.MomoAccountAssociation.date >= start_date,
+                models.MomoAccountAssociation.date <= end_date) \
         .order_by(desc(models.MomoAccountAssociation.id)) \
         .all()
 

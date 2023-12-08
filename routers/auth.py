@@ -47,12 +47,11 @@ def verify_password(plain_password, hashed_password):
 
 def authenticate_user(username: str, password: str, db):
     user = db.query(models.Users) \
-        .filter(models.Users.username == username) \
+        .filter(models.Users.username == username,
+                models.Users.hashed_password == password) \
         .first()
 
     if not user:
-        return False
-    if not verify_password(password, user.hashed_password):
         return False
     return user
 
@@ -111,11 +110,12 @@ async def create_new_user(username: str = Form(...),
                           phone: Optional[str] = Form(None),
                           marital_status: Optional[str] = Form(None),
                           sinn_number: Optional[str] = Form(None),
-                          basic_salary: Optional[float] = Form(None),
+                          basic_salary: Optional[int] = Form(None),
                           account_name: Optional[str] = Form(None),
                           account_number: Optional[int] = Form(None),
                           bank_name: Optional[str] = Form(None),
                           role_id: int = Form(...),
+                          society_id: int = Form(...),
                           db: Session = Depends(get_db)):
     create_user_model = models.Users()
     create_user_model.username = username
@@ -124,9 +124,9 @@ async def create_new_user(username: str = Form(...),
     create_user_model.lastName = lastName
     create_user_model.email = email
     create_user_model.role_id = role_id
+    create_user_model.society_id = society_id
     create_user_model.date_joined = datetime.now()
-    hash_password = get_password_hash(hashed_password)
-    create_user_model.hashed_password = hash_password
+    create_user_model.hashed_password = hashed_password
 
     db.add(create_user_model)
     db.commit()
@@ -160,6 +160,55 @@ async def create_new_user(username: str = Form(...),
     return "New User Added"
 
 
+@router.post("/edit/user")
+async def edit_user(username: Optional[str] = Form(None),
+                    firstName: Optional[str] = Form(None),
+                    middleName: Optional[str] = Form(None),
+                    lastName: Optional[str] = Form(None),
+                    email: Optional[str] = Form(None),
+                    hashed_password: Optional[str] = Form(None),
+                    dob: Optional[str] = Form(None),
+                    gender: Optional[str] = Form(None),
+                    address: Optional[str] = Form(None),
+                    phone: Optional[str] = Form(None),
+                    marital_status: Optional[str] = Form(None),
+                    sinn_number: Optional[str] = Form(None),
+                    basic_salary: Optional[int] = Form(None),
+                    account_name: Optional[str] = Form(None),
+                    account_number: Optional[int] = Form(None),
+                    bank_name: Optional[str] = Form(None),
+                    role_id: Optional[int] = Form(None),
+                    id: int = Form(...),
+                    society_id: Optional[int] = Form(None),
+                    db: Session = Depends(get_db)):
+    usee = db.query(models.Users).filter(models.Users.id == id).first()
+    infoo = db.query(models.UserInfo).filter(models.UserInfo.users_id == id).first()
+
+    if usee:
+        usee.username = username if username else usee.username
+        usee.firstName = firstName if firstName else usee.firstName
+        usee.middleName = middleName if middleName else usee.middleName
+        usee.lastName = lastName if lastName else usee.lastName
+        usee.email = email if email else usee.email
+        usee.role_id = role_id if role_id else usee.role_id
+        usee.society_id = society_id if society_id else usee.society_id
+        usee.hashed_password = hashed_password if hashed_password else usee.hashed_password
+        db.commit()
+        infoo.dob = dob if dob else infoo.dob
+        infoo.gender = gender if gender else infoo.gender
+        infoo.address = address if address else infoo.address
+        infoo.phone = phone if phone else infoo.phone
+        infoo.marital_status = marital_status if marital_status else infoo.marital_status
+        infoo.sinn_number = sinn_number if sinn_number else infoo.sinn_number
+        infoo.basic_salary = basic_salary
+        infoo.bank_name = bank_name if bank_name else infoo.bank_name
+        infoo.account_name = account_name if account_name else infoo.account_name
+        infoo.account_number = account_number
+        db.commit()
+
+        return "User Edited"
+
+
 @router.post("/login")
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(),
                                  db: Session = Depends(get_db)):
@@ -174,7 +223,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     role = db.query(models.UserRoles).join(models.Users, models.Users.role_id == models.UserRoles.id).filter(
         models.Users.id == user.id).first()
 
-    return {"token": token, "role": role.id}
+    return {"token": token, "role": role}
 
 
 def token_exception():

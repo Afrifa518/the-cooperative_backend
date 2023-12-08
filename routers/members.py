@@ -98,17 +98,17 @@ class AssociationMembers(BaseModel):
 @router.post("/register/individual")
 async def register_single_member(firstname: str = Form(...),
                                  middlename: Optional[str] = Form(None),
-                                 lastname: str = Form(...),
+                                 lastname: Optional[str] = Form(None),
                                  dob: Optional[str] = Form(None),
                                  gender: str = Form(...),
-                                 phone: str = Form(...),
+                                 phone: Optional[str] = Form(None),
                                  otherPhone: Optional[str] = Form(None),
-                                 address: str = Form(...),
+                                 address: Optional[str] = Form(None),
                                  otherAddress: Optional[str] = Form(None),
-                                 ghCardNumber: str = Form(...),
+                                 ghCardNumber: Optional[str] = Form(None),
                                  nextOfKin: Optional[str] = Form(None),
-                                 ghCardImage: Optional[UploadFile] = None,
-                                 memberImage=File(...),
+                                 ghCardImage: Union[UploadFile, str, None] = None,
+                                 memberImage: Union[UploadFile, str, None] = None,
                                  otherName: Optional[str] = Form(None),
                                  commonname: Optional[str] = Form(None),
                                  MaritalStatus: Optional[str] = Form(None),
@@ -120,15 +120,21 @@ async def register_single_member(firstname: str = Form(...),
                                  ):
     if user is None:
         raise get_user_exception()
-
-    if db.query(models.Members).filter_by(ghcardnumber=ghCardNumber).first():
-        raise HTTPException(status_code=400, detail="Card Number already exists")
+    if ghCardNumber:
+        if db.query(models.Members).filter_by(ghcardnumber=ghCardNumber).first():
+            raise HTTPException(status_code=400, detail="Card Number already exists")
+    else:
+        pass
 
     if isinstance(ghCardImage, str):
         gh_card_image_data = None
+
     else:
-        gh_card_image_data = ghCardImage.file.read()
-    member_image_data = memberImage.file.read()
+        gh_card_image_data = ghCardImage.file.read() if ghCardImage else None
+    if isinstance(memberImage, str):
+        member_image_data = None
+    else:
+        member_image_data = memberImage.file.read() if memberImage else None
 
     member_model = models.Members(
         firstname=firstname,
@@ -167,17 +173,17 @@ async def register_single_member(firstname: str = Form(...),
 async def create_member_and_register_association(association_id: int = Form(...),
                                                  firstname: str = Form(...),
                                                  middlename: Optional[str] = Form(None),
-                                                 lastname: str = Form(...),
+                                                 lastname: Optional[str] = Form(None),
                                                  dob: Optional[str] = Form(None),
                                                  gender: str = Form(...),
-                                                 phone: str = Form(...),
+                                                 phone: Optional[str] = Form(None),
                                                  otherPhone: Optional[str] = Form(None),
-                                                 address: str = Form(...),
+                                                 address: Optional[str] = Form(None),
                                                  otherAddress: Optional[str] = Form(None),
-                                                 ghCardNumber: str = Form(...),
+                                                 ghCardNumber: Optional[str] = Form(None),
                                                  nextOfKin: Optional[str] = Form(None),
-                                                 ghCardImage: Union[UploadFile, None] = None,
-                                                 memberImage: UploadFile = File(...),
+                                                 ghCardImage: Union[UploadFile, str, None] = None,
+                                                 memberImage: Union[UploadFile, str, None] = None,
                                                  otherName: Optional[str] = Form(None),
                                                  commonname: Optional[str] = Form(None),
                                                  MaritalStatus: Optional[str] = Form(None),
@@ -189,16 +195,21 @@ async def create_member_and_register_association(association_id: int = Form(...)
                                                  ):
     if user is None:
         raise get_user_exception()
-
-    if db.query(models.Members).filter_by(ghcardnumber=ghCardNumber).first():
-        raise HTTPException(status_code=400, detail="Card Number already exists")
+    if ghCardNumber:
+        if db.query(models.Members).filter_by(ghcardnumber=ghCardNumber).first():
+            raise HTTPException(status_code=400, detail="Card Number already exists")
+    else:
+        pass
 
     if isinstance(ghCardImage, str):
         gh_card_image_data = None
 
     else:
-        gh_card_image_data = ghCardImage.file.read()
-    member_image_data = memberImage.file.read()
+        gh_card_image_data = ghCardImage.file.read() if ghCardImage else None
+    if isinstance(memberImage, str):
+        member_image_data = None
+    else:
+        member_image_data = memberImage.file.read() if memberImage else None
 
     member_model = models.Members(
         firstname=firstname,
@@ -238,17 +249,17 @@ async def create_member_and_register_association(association_id: int = Form(...)
 async def create_memberinfo(member_id: int = Form(...),
                             firstname: str = Form(...),
                             middlename: Optional[str] = Form(None),
-                            lastname: str = Form(...),
+                            lastname: Optional[str] = Form(None),
                             dob: Optional[str] = Form(None),
                             gender: str = Form(...),
-                            phone: str = Form(...),
+                            phone: Optional[str] = Form(None),
                             otherPhone: Optional[str] = Form(None),
-                            address: str = Form(...),
+                            address: Optional[str] = Form(None),
                             otherAddress: Optional[str] = Form(None),
-                            ghCardNumber: str = Form(...),
+                            ghCardNumber: Optional[str] = Form(None),
                             nextOfKin: Optional[str] = Form(None),
-                            ghCardImage: Union[UploadFile, None] = None,
-                            memberImage: Union[UploadFile, None] = None,
+                            ghCardImage: Union[UploadFile, str, None] = None,
+                            memberImage: Union[UploadFile, str, None] = None,
                             otherName: Optional[str] = Form(None),
                             commonname: Optional[str] = Form(None),
                             MaritalStatus: Optional[str] = Form(None),
@@ -318,19 +329,83 @@ def details(details: AssociationMembers,
     return "Member Registered Successfully"
 
 
+@router.post("/update/passbook_id")
+def update_passbook_id(association_member_id: int = Form(...),
+                       new_passbook_id: str = Form(...),
+                       user: dict = Depends(get_current_user),
+                       db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
 
+    exist = db.query(models.AssociationMembers) \
+        .filter(models.AssociationMembers.passbook_id == new_passbook_id) \
+        .first()
+    if exist:
+        return "Passbook id already exist in Association"
+    else:
+        db.query(models.AssociationMembers) \
+            .filter(models.AssociationMembers.association_members_id == association_member_id) \
+            .update({models.AssociationMembers.passbook_id: new_passbook_id})
+        db.commit()
+        return "Passbook id updated successfully"
 
 
 def register_member(member_Id: int,
                     association_Id: int,
                     db: Session = Depends(get_db)):
     try:
-        associationMember_model = models.AssociationMembers(
-            association_id=association_Id,
-            members_id=member_Id
-        )
-        db.add(associationMember_model)
-        db.commit()
+        last_data = db.query(
+            models.Association.association_name,
+            models.AssociationMembers.association_members_id,
+            models.AssociationMembers.passbook_id
+        ) \
+            .select_from(models.AssociationMembers) \
+            .join(
+            models.Association,
+            models.Association.association_id == models.AssociationMembers.association_id
+        ) \
+            .filter(models.AssociationMembers.association_id == association_Id) \
+            .order_by(desc(models.AssociationMembers.association_members_id)) \
+            .first()
+
+        if last_data is None:
+            asso = db.query(models.Association).filter(models.Association.association_id == association_Id).first()
+            association_name = asso.association_name
+
+            first_two_characters = association_name[:2]
+            passbook_id_suffix = 000 + 1
+            new_passbook_id = f"{first_two_characters}{passbook_id_suffix:03d}"
+
+            associationMember_model = models.AssociationMembers(
+                passbook_id=new_passbook_id,
+                association_id=association_Id,
+                members_id=member_Id
+            )
+            db.add(associationMember_model)
+            db.commit()
+
+        else:
+            association_name = last_data[0]
+            if last_data.passbook_id is None:
+                pass
+            else:
+                last_passbook_id = last_data[2]
+
+            first_two_characters = association_name[:2]
+            if last_data.passbook_id is None:
+                passbook_id_suffix = 000
+            else:
+                passbook_id_suffix = last_passbook_id[2:]
+            passbook_id_suffix_number = int(passbook_id_suffix) + 1
+            new_passbook_id = f"{first_two_characters}{passbook_id_suffix_number:03d}"
+
+            associationMember_model = models.AssociationMembers(
+                passbook_id=new_passbook_id,
+                association_id=association_Id,
+                members_id=member_Id
+            )
+            db.add(associationMember_model)
+            db.commit()
 
         passbook_id = db.query(models.AssociationMembers) \
             .order_by(desc(models.AssociationMembers.association_members_id)) \
@@ -340,6 +415,7 @@ def register_member(member_Id: int,
 
         return {"message": f"Member Passbook Number is {passbook_id.association_members_id}"}
     except Exception as e:
+        print(f"Here is the Exception {str(e)}")
         return {"error": str(e)}
 
 
@@ -367,6 +443,7 @@ def default_registration_account(member_Id: int,
         db.commit()
         return {"message": "Saved"}
     except Exception as e:
+        print(f"Here is the Exception {str(e)}")
         return {"error": str(e)}
 
 
@@ -375,14 +452,14 @@ def default_registration_account_individuals(member_Id: int,
     current_date = datetime.now().strftime("%Y-%m-%d")
     try:
         account_coop_model = models.MemberSavingsAccount(
-            savings_id=2,
+            savings_id=1,
             open_date=current_date,
             current_balance=-20,
             association_member_id=None,
             member_id=member_Id
         )
         account_dues_model = models.MemberSavingsAccount(
-            savings_id=3,
+            savings_id=2,
             open_date=current_date,
             current_balance=0,
             association_member_id=None,
@@ -393,6 +470,7 @@ def default_registration_account_individuals(member_Id: int,
         db.commit()
         return {"message": "Saved"}
     except Exception as e:
+        print(f"Here is the Exception {str(e)}")
         return {"error": str(e)}
 
 
@@ -527,6 +605,7 @@ async def get_association_members(association_id: int,
         db.query(
             models.Association.association_id,
             models.AssociationMembers.association_members_id,
+            models.AssociationMembers.passbook_id,
             models.Members.member_id,
             models.Members.firstname,
             models.Members.middlename,
@@ -549,6 +628,7 @@ async def get_association_members(association_id: int,
         (
             association_id,
             association_members_id,
+            passbook_id,
             member_id,
             firstname,
             middlename,
@@ -561,6 +641,7 @@ async def get_association_members(association_id: int,
         response.append({
             "Association_id": association_id,
             "PassBook_id": association_members_id,
+            "Original_pass": passbook_id,
             "Member_id": member_id,
             "Fullname": f"{firstname} {middlename} {lastname}",
             "GhCardNumber": ghcardnumber,
@@ -569,6 +650,24 @@ async def get_association_members(association_id: int,
         })
 
     return response
+
+
+@router.get("/passbooks/transfer/{association_id}")
+async def get_association_passbooks(association_id: int,
+                                    user: dict = Depends(get_current_user),
+                                    db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    yes = db.query(models.AssociationMembers.association_members_id,
+                   models.Members.firstname,
+                   models.Members.lastname,
+                   models.Members.member_id) \
+        .select_from(models.AssociationMembers) \
+        .join(models.Members, models.Members.member_id == models.AssociationMembers.members_id) \
+        .order_by(desc(models.AssociationMembers.association_members_id)) \
+        .filter(models.AssociationMembers.association_id == association_id) \
+        .all()
+    return yes
 
 
 @router.get("/everymember/{association_id}")
@@ -645,7 +744,8 @@ async def get_all_members(user: dict = Depends(get_current_user),
         models.Members.address,
         models.Members.ghcardnumber,
         models.AssociationMembers.association_members_id,
-        models.Association.association_name
+        models.Association.association_name,
+        models.AssociationMembers.passbook_id,
     ) \
         .outerjoin(models.AssociationMembers, models.AssociationMembers.members_id == models.Members.member_id) \
         .join(models.Association, models.AssociationMembers.association_id == models.Association.association_id) \
@@ -665,7 +765,8 @@ async def get_all_members(user: dict = Depends(get_current_user),
             address,
             ghcardnumber,
             association_members_id,
-            association_name
+            association_name,
+            passbook_id,
         ) = member_info_kakra_nu
 
         if member_id not in seen_member_ids:
@@ -679,7 +780,8 @@ async def get_all_members(user: dict = Depends(get_current_user),
                 "address": address,
                 "ghcardnumber": ghcardnumber,
                 "association_members_id": association_members_id,
-                "association_name": association_name
+                "association_name": association_name,
+                "passbook_id": passbook_id
             })
 
     # Retrieve members who are not in any association
@@ -725,6 +827,27 @@ async def get_all_members(user: dict = Depends(get_current_user),
         "Association_Members": members_in_associations,
         "Individual_Members": individual_members_list
     }
+
+
+@router.get("/member/passbook_id/{association_member_id}")
+async def get_member_passbook_id(association_member_id: int,
+                                 user: dict = Depends(get_current_user),
+                                 db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    association_initials = db.query(models.Association) \
+        .join(models.AssociationMembers, models.Association.association_id == models.AssociationMembers.association_id) \
+        .filter(models.AssociationMembers.association_members_id == association_member_id) \
+        .order_by(desc(models.AssociationMembers.association_members_id)) \
+        .first()
+
+    initials = association_initials.association_name[:2]
+
+    passbook_id = db.query(models.AssociationMembers).filter(
+        models.AssociationMembers.association_members_id == association_member_id).first()
+
+    return {"pass_id": passbook_id.passbook_id, "initials": initials}
 
 
 @router.delete("/{member_id}")

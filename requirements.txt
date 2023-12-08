@@ -44,3 +44,4 @@ ujson
 uvicorn
 watchfiles
 websockets
+python-dateutil

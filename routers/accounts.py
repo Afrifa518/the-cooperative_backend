@@ -41,6 +41,7 @@ class SavingsAccount(BaseModel):
 
 
 class LoanAccount(BaseModel):
+    id: Optional[int]
     account_name: str
     interest_amt: float
     application_fee: float
@@ -101,8 +102,8 @@ async def delete_savings_account(savings_acc_id: int,
 
 @router.delete("/delete_acc/loan/{loan_acc_id}")
 async def delete_loans_account(loan_acc_id: int,
-                                 user: dict = Depends(get_current_user),
-                                 db: Session = Depends(get_db)):
+                               user: dict = Depends(get_current_user),
+                               db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
     rjjb = db.query(models.MemberLoanAccount).filter(models.MemberLoanAccount.id == loan_acc_id).first()
@@ -117,6 +118,50 @@ async def delete_loans_account(loan_acc_id: int,
 
         db.commit()
         db.query(models.MemberLoanAccount).filter(models.MemberLoanAccount.id == loan_acc_id).delete()
+        db.commit()
+        return "Account Deleted"
+
+
+@router.delete("/delete_acc/share/{share_acc_id}")
+async def delete_loans_account(share_acc_id: int,
+                               user: dict = Depends(get_current_user),
+                               db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    rjjb = db.query(models.MemberShareAccount).filter(models.MemberShareAccount.id == share_acc_id).first()
+    bob = rjjb
+    if rjjb.current_balance < 0:
+        return "Depts must be cleared before deleting account"
+    elif rjjb.current_balance > 0:
+        return "Account must be empty before deleting"
+    else:
+        tra = db.query(models.SharesTransaction).filter(
+            models.SharesTransaction.shares_acc_id == share_acc_id).delete(synchronize_session=False)
+
+        db.commit()
+        db.query(models.MemberShareAccount).filter(models.MemberShareAccount.id == share_acc_id).delete()
+        db.commit()
+        return "Account Deleted"
+
+
+@router.delete("/delete_acc/commodity/{commodity_acc_id}")
+async def delete_loans_account(commodity_acc_id: int,
+                               user: dict = Depends(get_current_user),
+                               db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    rjjb = db.query(models.MemberCommodityAccount).filter(models.MemberCommodityAccount.id == commodity_acc_id).first()
+    bob = rjjb
+    if rjjb.cash_value < 0:
+        return "Depts must be cleared before deleting account"
+    elif rjjb.cash_value > 0:
+        return "Account must be empty before deleting"
+    else:
+        tra = db.query(models.CommodityTransactions).filter(
+            models.CommodityTransactions.commodity_acc_id == commodity_acc_id).delete(synchronize_session=False)
+
+        db.commit()
+        db.query(models.MemberCommodityAccount).filter(models.MemberCommodityAccount.id == commodity_acc_id).delete()
         db.commit()
         return "Account Deleted"
 
@@ -365,107 +410,221 @@ async def transaction_funds(transaction_type_id: int = Form(...),
     return "Funds Requested"
 
 
-@router.get("/expense/list")
-async def get_all_expense_list(user: dict = Depends(get_current_user),
+
+
+@router.post("/expense/list")
+async def get_all_expense_list(which: Optional[str] = Form(None),
+                               start_date: Optional[str] = Form(None),
+                               end_date: Optional[str] = Form(None),
+                               user: dict = Depends(get_current_user),
                                db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
-    dh = db.query(models.UserAccountTransactions.transaction_id,
-                  models.UserAccountTransactions.narration,
-                  models.UserAccountTransactions.request_date,
-                  models.UserAccountTransactions.amount,
-                  models.UserAccountTransactions.status,
-                  models.UserAccountTransactions.balance,
-                  models.Users.firstName,
-                  models.Users.lastName,
-                  models.UserRoles.role_name) \
-        .select_from(models.UserAccountTransactions) \
-        .join(models.TransactionType,
-              models.TransactionType.transactype_id == models.UserAccountTransactions.transaction_type_id) \
-        .join(models.UserAccount,
-              models.UserAccount.user_account_id == models.UserAccountTransactions.user_account_id) \
-        .join(models.Users,
-              models.Users.id == models.UserAccount.user_id) \
-        .join(models.UserRoles,
-              models.UserRoles.id == models.Users.role_id) \
-        .filter(models.UserAccountTransactions.status == "Request") \
-        .order_by(desc(models.UserAccountTransactions.transaction_id)) \
-        .all()
+    if which == "request":
+        dh = db.query(models.UserAccountTransactions.transaction_id,
+                      models.UserAccountTransactions.narration,
+                      models.UserAccountTransactions.request_date,
+                      models.UserAccountTransactions.amount,
+                      models.UserAccountTransactions.status,
+                      models.UserAccountTransactions.balance,
+                      models.Users.firstName,
+                      models.Users.lastName,
+                      models.UserRoles.role_name) \
+            .select_from(models.UserAccountTransactions) \
+            .join(models.TransactionType,
+                  models.TransactionType.transactype_id == models.UserAccountTransactions.transaction_type_id) \
+            .join(models.UserAccount,
+                  models.UserAccount.user_account_id == models.UserAccountTransactions.user_account_id) \
+            .join(models.Users,
+                  models.Users.id == models.UserAccount.user_id) \
+            .join(models.UserRoles,
+                  models.UserRoles.id == models.Users.role_id) \
+            .filter(models.UserAccountTransactions.status == "Request",
+                    func.date(models.UserAccountTransactions.request_date) >= start_date,
+                    func.date(models.UserAccountTransactions.request_date) <= end_date) \
+            .order_by(desc(models.UserAccountTransactions.transaction_id)) \
+            .all()
+    else:
+        dh = db.query(models.UserAccountTransactions.transaction_id,
+                      models.UserAccountTransactions.narration,
+                      models.UserAccountTransactions.request_date,
+                      models.UserAccountTransactions.amount,
+                      models.UserAccountTransactions.status,
+                      models.UserAccountTransactions.balance,
+                      models.Users.firstName,
+                      models.Users.lastName,
+                      models.UserRoles.role_name) \
+            .select_from(models.UserAccountTransactions) \
+            .join(models.TransactionType,
+                  models.TransactionType.transactype_id == models.UserAccountTransactions.transaction_type_id) \
+            .join(models.UserAccount,
+                  models.UserAccount.user_account_id == models.UserAccountTransactions.user_account_id) \
+            .join(models.Users,
+                  models.Users.id == models.UserAccount.user_id) \
+            .join(models.UserRoles,
+                  models.UserRoles.id == models.Users.role_id) \
+            .filter(models.UserAccountTransactions.status == "Request") \
+            .order_by(desc(models.UserAccountTransactions.transaction_id)) \
+            .all()
 
-    dg = db.query(models.UserAccountTransactions.transaction_id,
-                  models.UserAccountTransactions.narration,
-                  models.UserAccountTransactions.request_date,
-                  models.UserAccountTransactions.amount,
-                  models.ApprovalMessage.message,
-                  models.UserAccountTransactions.status,
-                  models.UserAccountTransactions.balance,
-                  models.Users.firstName,
-                  models.Users.lastName,
-                  models.UserRoles.role_name) \
-        .select_from(models.UserAccountTransactions) \
-        .join(models.ApprovalMessage,
-              models.ApprovalMessage.id == models.UserAccountTransactions.message_id) \
-        .join(models.TransactionType,
-              models.TransactionType.transactype_id == models.UserAccountTransactions.transaction_type_id) \
-        .join(models.UserAccount,
-              models.UserAccount.user_account_id == models.UserAccountTransactions.user_account_id) \
-        .join(models.Users,
-              models.Users.id == models.UserAccount.user_id) \
-        .join(models.UserRoles,
-              models.UserRoles.id == models.Users.role_id) \
-        .filter(models.UserAccountTransactions.status == "Approved") \
-        .order_by(desc(models.UserAccountTransactions.transaction_id)) \
-        .all()
+    if which == 'approval':
+        dg = db.query(models.UserAccountTransactions.transaction_id,
+                      models.UserAccountTransactions.narration,
+                      models.UserAccountTransactions.request_date,
+                      models.UserAccountTransactions.amount,
+                      models.ApprovalMessage.message,
+                      models.UserAccountTransactions.status,
+                      models.UserAccountTransactions.balance,
+                      models.Users.firstName,
+                      models.Users.lastName,
+                      models.UserRoles.role_name) \
+            .select_from(models.UserAccountTransactions) \
+            .join(models.ApprovalMessage,
+                  models.ApprovalMessage.id == models.UserAccountTransactions.message_id) \
+            .join(models.TransactionType,
+                  models.TransactionType.transactype_id == models.UserAccountTransactions.transaction_type_id) \
+            .join(models.UserAccount,
+                  models.UserAccount.user_account_id == models.UserAccountTransactions.user_account_id) \
+            .join(models.Users,
+                  models.Users.id == models.UserAccount.user_id) \
+            .join(models.UserRoles,
+                  models.UserRoles.id == models.Users.role_id) \
+            .filter(models.UserAccountTransactions.status == "Approved",
+                    func.date(models.UserAccountTransactions.request_date) >= start_date,
+                    func.date(models.UserAccountTransactions.request_date) <= end_date) \
+            .order_by(desc(models.UserAccountTransactions.transaction_id)) \
+            .all()
+    else:
+        dg = db.query(models.UserAccountTransactions.transaction_id,
+                      models.UserAccountTransactions.narration,
+                      models.UserAccountTransactions.request_date,
+                      models.UserAccountTransactions.amount,
+                      models.ApprovalMessage.message,
+                      models.UserAccountTransactions.status,
+                      models.UserAccountTransactions.balance,
+                      models.Users.firstName,
+                      models.Users.lastName,
+                      models.UserRoles.role_name) \
+            .select_from(models.UserAccountTransactions) \
+            .join(models.ApprovalMessage,
+                  models.ApprovalMessage.id == models.UserAccountTransactions.message_id) \
+            .join(models.TransactionType,
+                  models.TransactionType.transactype_id == models.UserAccountTransactions.transaction_type_id) \
+            .join(models.UserAccount,
+                  models.UserAccount.user_account_id == models.UserAccountTransactions.user_account_id) \
+            .join(models.Users,
+                  models.Users.id == models.UserAccount.user_id) \
+            .join(models.UserRoles,
+                  models.UserRoles.id == models.Users.role_id) \
+            .filter(models.UserAccountTransactions.status == "Approved") \
+            .order_by(desc(models.UserAccountTransactions.transaction_id)) \
+            .all()
 
-    df = db.query(models.UserAccountTransactions.transaction_id,
-                  models.UserAccountTransactions.narration,
-                  models.UserAccountTransactions.request_date,
-                  models.ApprovalMessage.message,
-                  models.UserAccountTransactions.amount,
-                  models.UserAccountTransactions.status,
-                  models.UserAccountTransactions.balance,
-                  models.Users.firstName,
-                  models.Users.lastName,
-                  models.UserRoles.role_name) \
-        .select_from(models.UserAccountTransactions) \
-        .join(models.ApprovalMessage,
-              models.ApprovalMessage.id == models.UserAccountTransactions.message_id) \
-        .join(models.TransactionType,
-              models.TransactionType.transactype_id == models.UserAccountTransactions.transaction_type_id) \
-        .join(models.UserAccount,
-              models.UserAccount.user_account_id == models.UserAccountTransactions.user_account_id) \
-        .join(models.Users,
-              models.Users.id == models.UserAccount.user_id) \
-        .join(models.UserRoles,
-              models.UserRoles.id == models.Users.role_id) \
-        .filter(models.UserAccountTransactions.status == "Rejected") \
-        .order_by(desc(models.UserAccountTransactions.transaction_id)) \
-        .all()
+    if which == 'reject':
+        df = db.query(models.UserAccountTransactions.transaction_id,
+                      models.UserAccountTransactions.narration,
+                      models.UserAccountTransactions.request_date,
+                      models.ApprovalMessage.message,
+                      models.UserAccountTransactions.amount,
+                      models.UserAccountTransactions.status,
+                      models.UserAccountTransactions.balance,
+                      models.Users.firstName,
+                      models.Users.lastName,
+                      models.UserRoles.role_name) \
+            .select_from(models.UserAccountTransactions) \
+            .join(models.ApprovalMessage,
+                  models.ApprovalMessage.id == models.UserAccountTransactions.message_id) \
+            .join(models.TransactionType,
+                  models.TransactionType.transactype_id == models.UserAccountTransactions.transaction_type_id) \
+            .join(models.UserAccount,
+                  models.UserAccount.user_account_id == models.UserAccountTransactions.user_account_id) \
+            .join(models.Users,
+                  models.Users.id == models.UserAccount.user_id) \
+            .join(models.UserRoles,
+                  models.UserRoles.id == models.Users.role_id) \
+            .filter(models.UserAccountTransactions.status == "Rejected",
+                    func.date(models.UserAccountTransactions.request_date) >= start_date,
+                    func.date(models.UserAccountTransactions.request_date) <= end_date) \
+            .order_by(desc(models.UserAccountTransactions.transaction_id)) \
+            .all()
+    else:
+        df = db.query(models.UserAccountTransactions.transaction_id,
+                      models.UserAccountTransactions.narration,
+                      models.UserAccountTransactions.request_date,
+                      models.ApprovalMessage.message,
+                      models.UserAccountTransactions.amount,
+                      models.UserAccountTransactions.status,
+                      models.UserAccountTransactions.balance,
+                      models.Users.firstName,
+                      models.Users.lastName,
+                      models.UserRoles.role_name) \
+            .select_from(models.UserAccountTransactions) \
+            .join(models.ApprovalMessage,
+                  models.ApprovalMessage.id == models.UserAccountTransactions.message_id) \
+            .join(models.TransactionType,
+                  models.TransactionType.transactype_id == models.UserAccountTransactions.transaction_type_id) \
+            .join(models.UserAccount,
+                  models.UserAccount.user_account_id == models.UserAccountTransactions.user_account_id) \
+            .join(models.Users,
+                  models.Users.id == models.UserAccount.user_id) \
+            .join(models.UserRoles,
+                  models.UserRoles.id == models.Users.role_id) \
+            .filter(models.UserAccountTransactions.status == "Rejected") \
+            .order_by(desc(models.UserAccountTransactions.transaction_id)) \
+            .all()
 
-    dk = db.query(models.UserAccountTransactions.transaction_id,
-                  models.UserAccountTransactions.narration,
-                  models.UserAccountTransactions.disburse_date,
-                  models.ApprovalMessage.message,
-                  models.UserAccountTransactions.amount,
-                  models.UserAccountTransactions.status,
-                  models.UserAccountTransactions.balance,
-                  models.Users.firstName,
-                  models.Users.lastName,
-                  models.UserRoles.role_name) \
-        .select_from(models.UserAccountTransactions) \
-        .join(models.ApprovalMessage,
-              models.ApprovalMessage.id == models.UserAccountTransactions.message_id) \
-        .join(models.TransactionType,
-              models.TransactionType.transactype_id == models.UserAccountTransactions.transaction_type_id) \
-        .join(models.UserAccount,
-              models.UserAccount.user_account_id == models.UserAccountTransactions.user_account_id) \
-        .join(models.Users,
-              models.Users.id == models.UserAccount.user_id) \
-        .join(models.UserRoles,
-              models.UserRoles.id == models.Users.role_id) \
-        .filter(models.UserAccountTransactions.status == "Disbursed") \
-        .order_by(desc(models.UserAccountTransactions.transaction_id)) \
-        .all()
+    if which == 'disburse':
+        dk = db.query(models.UserAccountTransactions.transaction_id,
+                      models.UserAccountTransactions.narration,
+                      models.UserAccountTransactions.disburse_date,
+                      models.ApprovalMessage.message,
+                      models.UserAccountTransactions.amount,
+                      models.UserAccountTransactions.status,
+                      models.UserAccountTransactions.balance,
+                      models.Users.firstName,
+                      models.Users.lastName,
+                      models.UserRoles.role_name) \
+            .select_from(models.UserAccountTransactions) \
+            .join(models.ApprovalMessage,
+                  models.ApprovalMessage.id == models.UserAccountTransactions.message_id) \
+            .join(models.TransactionType,
+                  models.TransactionType.transactype_id == models.UserAccountTransactions.transaction_type_id) \
+            .join(models.UserAccount,
+                  models.UserAccount.user_account_id == models.UserAccountTransactions.user_account_id) \
+            .join(models.Users,
+                  models.Users.id == models.UserAccount.user_id) \
+            .join(models.UserRoles,
+                  models.UserRoles.id == models.Users.role_id) \
+            .filter(models.UserAccountTransactions.status == "Disbursed",
+                    func.date(models.UserAccountTransactions.request_date) >= start_date,
+                    func.date(models.UserAccountTransactions.request_date) <= end_date) \
+            .order_by(desc(models.UserAccountTransactions.transaction_id)) \
+            .all()
+    else:
+        dk = db.query(models.UserAccountTransactions.transaction_id,
+                      models.UserAccountTransactions.narration,
+                      models.UserAccountTransactions.disburse_date,
+                      models.ApprovalMessage.message,
+                      models.UserAccountTransactions.amount,
+                      models.UserAccountTransactions.status,
+                      models.UserAccountTransactions.balance,
+                      models.Users.firstName,
+                      models.Users.lastName,
+                      models.UserRoles.role_name) \
+            .select_from(models.UserAccountTransactions) \
+            .join(models.ApprovalMessage,
+                  models.ApprovalMessage.id == models.UserAccountTransactions.message_id) \
+            .join(models.TransactionType,
+                  models.TransactionType.transactype_id == models.UserAccountTransactions.transaction_type_id) \
+            .join(models.UserAccount,
+                  models.UserAccount.user_account_id == models.UserAccountTransactions.user_account_id) \
+            .join(models.Users,
+                  models.Users.id == models.UserAccount.user_id) \
+            .join(models.UserRoles,
+                  models.UserRoles.id == models.Users.role_id) \
+            .filter(models.UserAccountTransactions.status == "Disbursed") \
+            .order_by(desc(models.UserAccountTransactions.transaction_id)) \
+            .all()
 
     return {
         "Requested_Expenses": dh,
@@ -700,19 +859,37 @@ async def create_loan(loan: LoanAccount,
     if user is None:
         raise get_user_exception()
 
-    loan_model = models.LoanAccount()
-    loan_model.account_name = loan.account_name
-    loan_model.interest_amt = loan.interest_amt
-    loan_model.application_fee = loan.application_fee
-    loan_model.proccessing_fee = loan.proccessing_fee
-    loan_model.min_amt = loan.min_amt
-    loan_model.max_amt = loan.max_amt
+    namfwed = db.query(models.LoanAccount).all()
 
-    db.add(loan_model)
-    db.flush()
-    db.commit()
+    if loan.id:
+        loan_model = db.query(models.LoanAccount).filter(models.LoanAccount.id == loan.id).first()
+        loan_model.account_name = loan.account_name
+        loan_model.interest_amt = loan.interest_amt
+        loan_model.application_fee = loan.application_fee
+        loan_model.proccessing_fee = loan.proccessing_fee
+        loan_model.min_amt = loan.min_amt
+        loan_model.max_amt = loan.max_amt
 
-    return "Setup Complete"
+        db.flush()
+        db.commit()
+        return "Changes done successfully"
+    else:
+        for ff in namfwed:
+            if ff.account_name == loan.account_name:
+                return "Loan Account Name Exists"
+            else:
+                loan_model = models.LoanAccount()
+                loan_model.account_name = loan.account_name
+                loan_model.interest_amt = loan.interest_amt
+                loan_model.application_fee = loan.application_fee
+                loan_model.proccessing_fee = loan.proccessing_fee
+                loan_model.min_amt = loan.min_amt
+                loan_model.max_amt = loan.max_amt
+                db.add(loan_model)
+                db.flush()
+                db.commit()
+
+                return "Setup Complete"
 
 
 class MemberLoan(BaseModel):
@@ -1168,10 +1345,11 @@ async def get_member_accounts(association_member_id: int,
 
     all_savings_accounts = (
         db.query(
-            models.MemberSavingsAccount.open_date,
-            models.MemberSavingsAccount.id,
-            models.MemberSavingsAccount.current_balance,
-            models.SavingsAccount.account_name,
+            models.MemberSavingsAccount.open_date.label("msa_open_date"),
+            models.MemberSavingsAccount.id.label("msa_id"),
+            models.MemberSavingsAccount.current_balance.label("msa_current_balance"),
+            models.SavingsAccount.account_name.label("sa_account_name"),
+            models.SavingsAccount.id.label("sa_id")
         )
         .select_from(models.MemberSavingsAccount)
         .join(models.SavingsAccount, models.MemberSavingsAccount.savings_id == models.SavingsAccount.id)
@@ -1185,25 +1363,28 @@ async def get_member_accounts(association_member_id: int,
         (
 
             open_date,
-            id,
+            msa_id,
             current_balance,
             account_name,
+            sa_id
         ) = row
 
         savings.append({
             "open_date": open_date,
-            "ID": id,
+            "ID": msa_id,
             "Current_Balance": current_balance,
             "Account_Name": account_name,
+            "savings_id": sa_id,
         })
 
     all_loans_accounts = (
         db.query(
-            models.MemberLoanAccount.current_balance,
-            models.MemberLoanAccount.id,
-            models.MemberLoanAccount.open_date,
-            models.LoanAccount.account_name,
-            models.LoanAccount.interest_amt
+            models.MemberLoanAccount.current_balance.label("m_open_date"),
+            models.MemberLoanAccount.id.label("m_id"),
+            models.MemberLoanAccount.open_date.label("m_current_balance"),
+            models.LoanAccount.account_name.label("loan_account_name"),
+            models.LoanAccount.interest_amt.label("interest_amt"),
+            models.LoanAccount.id.label("loan_id"),
         )
         .select_from(models.MemberLoanAccount)
         .join(models.LoanAccount, models.MemberLoanAccount.loan_id == models.LoanAccount.id)
@@ -1214,28 +1395,31 @@ async def get_member_accounts(association_member_id: int,
     for loanrow in all_loans_accounts:
         (
             current_balance,
-            id,
+            m_id,
             open_date,
             account_name,
             interest_amt,
+            loan_id
         ) = loanrow
 
         loans.append({
             "current_balance": current_balance,
-            "ID": id,
+            "ID": m_id,
             "open_date": open_date,
             "account_name": account_name,
             "interest_amt": interest_amt,
+            "loan_id": loan_id
         })
 
     shares = []
     all_shares_accounts = (
         db.query(
-            models.MemberShareAccount.open_date,
-            models.MemberShareAccount.id,
-            models.MemberShareAccount.current_balance,
-            models.ShareAccount.account_name,
-            models.ShareAccount.share_value
+            models.MemberShareAccount.open_date.label("msh_open_date"),
+            models.MemberShareAccount.id.label("msh_id"),
+            models.MemberShareAccount.current_balance.label("msh_current_balance"),
+            models.ShareAccount.account_name.label("share_account_name"),
+            models.ShareAccount.share_value.label("share_value"),
+            models.ShareAccount.id.label("share_id")
         )
         .select_from(models.MemberShareAccount)
         .join(models.ShareAccount, models.MemberShareAccount.share_id == models.ShareAccount.id)
@@ -1246,26 +1430,29 @@ async def get_member_accounts(association_member_id: int,
     for sharerow in all_shares_accounts:
         (
             open_date,
-            id,
+            msh_id,
             current_balance,
             account_name,
             share_value,
+            share_id
         ) = sharerow
         shares.append({
             "open_date": open_date,
-            "ID": id,
+            "ID": msh_id,
             "current_balance": current_balance,
             "account_name": account_name,
-            "share_value": share_value
+            "share_value": share_value,
+            "share_id": share_id
         })
 
     commodity = []
     all_commodity_accounts = (
         db.query(
-            models.MemberCommodityAccount.id,
-            models.MemberCommodityAccount.open_date,
-            models.MemberCommodityAccount.cash_value,
-            models.CommodityAccount.warehouse,
+            models.MemberCommodityAccount.id.label("mca_id"),
+            models.MemberCommodityAccount.open_date.label("mca_open_date"),
+            models.MemberCommodityAccount.cash_value.label("mca_cash_value"),
+            models.CommodityAccount.warehouse.label("ca_warehouse"),
+            models.CommodityAccount.id.label("ca_id")
         )
         .select_from(models.MemberCommodityAccount)
         .join(models.CommodityAccount, models.MemberCommodityAccount.commodity_id == models.CommodityAccount.id)
@@ -1275,17 +1462,19 @@ async def get_member_accounts(association_member_id: int,
 
     for commodityrow in all_commodity_accounts:
         (
-            id,
+            mca_id,
             open_date,
             cash_value,
             warehouse,
+            ca_id
         ) = commodityrow
 
         commodity.append({
-            "ID": id,
+            "ID": mca_id,
             "open_date": open_date,
             "Amount_value": cash_value,
             "Warehouse_name": warehouse,
+            "commodity_id": ca_id
         })
 
     return {
