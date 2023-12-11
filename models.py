@@ -243,7 +243,7 @@ class Commodities(Base):
     commodity = Column(String)
 
     tracked = relationship("CommodityValueTrack", back_populates="tracker")
-    thingsthe = relationship("CommodityTransactions", back_populates="thethings")
+    things_the = relationship("CommodityTransactions", back_populates="thethings")
     ankasa_com = relationship("MemberCommodityAccCommodities", back_populates="com_ankasa")
     type_commodity = relationship("SocietyCommodities", back_populates="commodity_type")
     redarg = relationship("CommodityGradeValues", back_populates="grader")
@@ -259,6 +259,7 @@ class UnitsKg(Base):
 
     trillion_per_unit = relationship("CommodityUnitsJoin", back_populates="unit_per_trillion")
     tinu = relationship("MemberCommodityAccCommodities", back_populates="unit")
+    commodity_units = relationship("CommodityTransactions", back_populates="unit_values")
 
 
 class CommodityUnitsJoin(Base):
@@ -281,6 +282,7 @@ class CommodityGradeValues(Base):
     commodities_id = Column(Integer, ForeignKey("commodities.id"))
 
     grader = relationship("Commodities", back_populates="redarg")
+    commodity_grades = relationship("CommodityTransactions", back_populates="grade_values")
 
 
 class CommodityAccount(Base):
@@ -586,16 +588,6 @@ class TransactionType(Base):
     user_account_transactions = relationship("UserAccountTransactions", back_populates="transaction_type")
     momo_style_transactions = relationship("MomoAccountTransactions", back_populates="transaction_style")
 
-
-class CommoditiesTransactionType(Base):
-    __tablename__ = "commodity_transaction_type"
-
-    id = Column(Integer, primary_key=True, index=True)
-    commodity_transact_type = Column(String)
-
-    nu_type = relationship("CommodityTransactions", back_populates="type_nu")
-
-
 class ReconciliationChats(Base):
     __tablename__ = "reconciliation_chats"
 
@@ -719,17 +711,22 @@ class ShareCert(Base):
 class CommodityTransactions(Base):
     __tablename__ = "commodity_transactions"
 
-    transaction_id = Column(Integer, primary_key=True, index=True)
-    commodity_transaction_type_id = Column(Integer, ForeignKey("commodity_transaction_type.id"))
+    transaction_id = Column(Integer, primary_key=True)
     prep_by = Column(Integer, ForeignKey("users.id"))
     narration = Column(String)
     transaction_date = Column(DateTime)
     commodity_acc_id = Column(Integer, ForeignKey("member_commodity_acc.id"))
     amount_of_commodity = Column(Integer)
     commodities_id = Column(Integer, ForeignKey("commodities.id"))
-    balance = Column(Float, nullable=True)
+    cash_value = Column(Float)
+    transaction_type_id = Column(Integer)
+    grade_id = Column(Integer, ForeignKey("commodity_grade_values.id"))
+    units_id = Column(Integer, ForeignKey("units/kg.id"))
+    total_cash_balance = Column(Float)
 
-    thethings = relationship("Commodities", back_populates="thingsthe")
-    type_nu = relationship("CommoditiesTransactionType", back_populates="nu_type")
+    # Relationships
+    thethings = relationship("Commodities", back_populates="things_the")
     nipa_nu = relationship("Users", back_populates="nu_nipa")
     account_nso = relationship("MemberCommodityAccount", back_populates="nso_account")
+    grade_values = relationship("CommodityGradeValues", back_populates="commodity_grades")
+    unit_values = relationship("UnitsKg", back_populates="commodity_units")

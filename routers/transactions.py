@@ -736,6 +736,10 @@ async def get_one_savings_accounts_transactions(member_savings_acc_id: int = For
                                                 db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
+
+    total_with = 0
+    total_dep = 0
+
     if start_date is None:
         accounts_transaction = db.query(
             models.SavingsTransaction.transaction_date,
@@ -773,7 +777,17 @@ async def get_one_savings_accounts_transactions(member_savings_acc_id: int = For
             .order_by(desc(models.SavingsTransaction.transaction_date)) \
             .all()
 
-    return accounts_transaction
+    for item in accounts_transaction:
+        if item.transactiontype_name == "Deposit":
+            total_dep += item.amount
+        elif item.transactiontype_name == "Withdraw":
+            total_with += item.amount
+
+    return {
+        "data": accounts_transaction,
+        "total_dep": total_dep,
+        "total_wit": total_with
+    }
 
 
 
@@ -1236,33 +1250,80 @@ async def get_info_to_prepare_loan_advise(transaction_id: int,
         pass
 
 
-@router.get("/transaction/loan/{member_loans_acc_id}")
-async def get_one_loan_accounts_transactions(member_loans_acc_id: int,
+@router.post("/transaction/loan/member_loans_acc_id")
+async def get_one_loan_accounts_transactions(member_loans_acc_id: int = Form(...),
+                                             start_date: Optional[str] = Form(None),
+                                             end_date: Optional[str] = Form(None),
                                              user: dict = Depends(get_current_user),
                                              db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
 
-    accounts_transaction = db.query(
-        models.LoansTransaction.transaction_date,
-        models.LoansTransaction.narration,
-        models.Users.username,
-        models.LoansTransaction.amount,
-        models.TransactionType.transactiontype_name,
-        models.LoansTransaction.transaction_id,
-        models.LoansTransaction.status,
-        models.LoansTransaction.balance
-    ).select_from(models.LoansTransaction) \
-        .join(models.TransactionType,
-              models.LoansTransaction.transactiontype_id == models.TransactionType.transactype_id) \
-        .join(models.Users,
-              models.Users.id == models.LoansTransaction.prep_by) \
-        .filter(models.LoansTransaction.loans_acc_id == member_loans_acc_id) \
-        .order_by(desc(models.LoansTransaction.transaction_date)) \
-        .all()
+    total_with = 0
+    total_dep = 0
 
-    return accounts_transaction
+    if start_date is None:
+        accounts_transaction = db.query(
+            models.LoansTransaction.transaction_date,
+            models.LoansTransaction.narration,
+            models.Users.username,
+            models.LoansTransaction.amount,
+            models.TransactionType.transactiontype_name,
+            models.LoansTransaction.transaction_id,
+            models.LoansTransaction.status,
+            models.LoansTransaction.balance
+        ).select_from(models.LoansTransaction) \
+            .join(models.TransactionType,
+                  models.LoansTransaction.transactiontype_id == models.TransactionType.transactype_id) \
+            .join(models.Users,
+                  models.Users.id == models.LoansTransaction.prep_by) \
+            .filter(models.LoansTransaction.loans_acc_id == member_loans_acc_id) \
+            .order_by(desc(models.LoansTransaction.transaction_date)) \
+            .all()
 
+        for item in accounts_transaction:
+            if item.transactiontype_name == "Deposit":
+                total_dep += item.amount
+            elif item.transactiontype_name == "Withdraw":
+                total_with += item.amount
+
+        return {
+            "data": accounts_transaction,
+            "total_dep": total_dep,
+            "total_wit": total_with
+        }
+    else:
+        accounts_transaction = db.query(
+            models.LoansTransaction.transaction_date,
+            models.LoansTransaction.narration,
+            models.Users.username,
+            models.LoansTransaction.amount,
+            models.TransactionType.transactiontype_name,
+            models.LoansTransaction.transaction_id,
+            models.LoansTransaction.status,
+            models.LoansTransaction.balance
+        ).select_from(models.LoansTransaction) \
+            .join(models.TransactionType,
+                  models.LoansTransaction.transactiontype_id == models.TransactionType.transactype_id) \
+            .join(models.Users,
+                  models.Users.id == models.LoansTransaction.prep_by) \
+            .filter(models.LoansTransaction.loans_acc_id == member_loans_acc_id,
+                    func.date(models.LoansTransaction.transaction_date) >= start_date,
+                    func.date(models.LoansTransaction.transaction_date) <= end_date) \
+            .order_by(desc(models.LoansTransaction.transaction_date)) \
+            .all()
+
+        for item in accounts_transaction:
+            if item.transactiontype_name == "Deposit":
+                total_dep += item.amount
+            elif item.transactiontype_name == "Withdraw":
+                total_with += item.amount
+
+        return {
+            "data": accounts_transaction,
+            "total_dep": total_dep,
+            "total_wit": total_with
+        }
 
 # Shares
 
@@ -1480,31 +1541,77 @@ async def get_share_cert_info(transaction_id: int,
     return {"Basic_Info": member_info, "Transaction_Details": transaction_details}
 
 
-@router.get("/transaction/share/{member_shares_acc_id}")
-async def get_one_shares_account_transactions(member_shares_acc_id: int,
+@router.post("/transaction/share/member_shares_acc_id")
+async def get_one_shares_account_transactions(member_shares_acc_id: int = Form(...),
+                                              start_date: Optional[str] = Form(None),
+                                              end_date: Optional[str] = Form(None),
                                               user: dict = Depends(get_current_user),
                                               db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
 
-    accounts_transaction = db.query(
-        models.SharesTransaction.transaction_date,
-        models.SharesTransaction.narration,
-        models.Users.username,
-        models.SharesTransaction.amount,
-        models.TransactionType.transactiontype_name,
-        models.SharesTransaction.transaction_id,
-        models.SharesTransaction.balance
-    ).select_from(models.SharesTransaction) \
-        .join(models.TransactionType,
-              models.SharesTransaction.transactiontype_id == models.TransactionType.transactype_id) \
-        .join(models.Users,
-              models.Users.id == models.SharesTransaction.prep_by) \
-        .filter(models.SharesTransaction.shares_acc_id == member_shares_acc_id) \
-        .order_by(desc(models.SharesTransaction.transaction_date)) \
-        .all()
+    total_with = 0
+    total_dep = 0
 
-    return accounts_transaction
+    if start_date is None:
+        accounts_transaction = db.query(
+            models.SharesTransaction.transaction_date,
+            models.SharesTransaction.narration,
+            models.Users.username,
+            models.SharesTransaction.amount,
+            models.TransactionType.transactiontype_name,
+            models.SharesTransaction.transaction_id,
+            models.SharesTransaction.balance
+        ).select_from(models.SharesTransaction) \
+            .join(models.TransactionType,
+                  models.SharesTransaction.transactiontype_id == models.TransactionType.transactype_id) \
+            .join(models.Users,
+                  models.Users.id == models.SharesTransaction.prep_by) \
+            .filter(models.SharesTransaction.shares_acc_id == member_shares_acc_id) \
+            .order_by(desc(models.SharesTransaction.transaction_date)) \
+            .all()
+
+        for item in accounts_transaction:
+            if item.transactiontype_name == "Deposit":
+                total_dep += item.amount
+            elif item.transactiontype_name == "Withdraw":
+                total_with += item.amount
+
+        return {
+            "data": accounts_transaction,
+            "total_dep": total_dep,
+            "total_wit": total_with
+        }
+    else:
+        accounts_transaction = db.query(
+            models.SharesTransaction.transaction_date,
+            models.SharesTransaction.narration,
+            models.Users.username,
+            models.SharesTransaction.amount,
+            models.TransactionType.transactiontype_name,
+            models.SharesTransaction.transaction_id,
+            models.SharesTransaction.balance
+        ).select_from(models.SharesTransaction) \
+            .join(models.TransactionType,
+                  models.SharesTransaction.transactiontype_id == models.TransactionType.transactype_id) \
+            .join(models.Users,
+                  models.Users.id == models.SharesTransaction.prep_by) \
+            .filter(models.SharesTransaction.shares_acc_id == member_shares_acc_id,
+                    func.date(models.SharesTransaction.transaction_date) >= start_date,
+                    func.date(models.SharesTransaction.transaction_date) <= end_date) \
+            .order_by(desc(models.SharesTransaction.transaction_date)) \
+            .all()
+        for item in accounts_transaction:
+            if item.transactiontype_name == "Deposit":
+                total_dep += item.amount
+            elif item.transactiontype_name == "Withdraw":
+                total_with += item.amount
+
+        return {
+            "data": accounts_transaction,
+            "total_dep": total_dep,
+            "total_wit": total_with
+        }
 
 
 @router.get("/savings/share/{member_shares_acc_id}")

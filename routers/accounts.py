@@ -196,9 +196,14 @@ async def get_society(society_id: int,
                       db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
+    current_balance_total = 0
     dd = db.query(models.SocietyBankAccounts).filter(models.SocietyBankAccounts.society_id == society_id).all()
     name = db.query(models.Society).filter(models.Society.id == society_id).first()
-    return {"Accounts": dd, "Society_Name": name.society}
+
+    for item in dd:
+        current_balance_total += item.current_balance
+
+    return {"Accounts": dd, "Society_Name": name.society, "Total": current_balance_total}
 
 
 @router.post("/payment/details")
@@ -295,7 +300,10 @@ async def get_society_for_transfer(society_acc_id: int,
                                    db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
-    return db.query(models.SocietyBankAccounts).filter(models.SocietyBankAccounts.id != society_acc_id).all()
+
+    rr = db.query(models.SocietyBankAccounts).filter(models.SocietyBankAccounts.id != society_acc_id).all()
+
+    return {"rr": rr}
 
 
 @router.post("/savings")
@@ -410,8 +418,6 @@ async def transaction_funds(transaction_type_id: int = Form(...),
     return "Funds Requested"
 
 
-
-
 @router.post("/expense/list")
 async def get_all_expense_list(which: Optional[str] = Form(None),
                                start_date: Optional[str] = Form(None),
@@ -444,6 +450,12 @@ async def get_all_expense_list(which: Optional[str] = Form(None),
                     func.date(models.UserAccountTransactions.request_date) <= end_date) \
             .order_by(desc(models.UserAccountTransactions.transaction_id)) \
             .all()
+
+        reg_sum_amount = 0
+        reg_sum_balance = 0
+        for amount in dh:
+            reg_sum_amount += amount.amount
+            reg_sum_balance += amount.balance
     else:
         dh = db.query(models.UserAccountTransactions.transaction_id,
                       models.UserAccountTransactions.narration,
@@ -466,6 +478,12 @@ async def get_all_expense_list(which: Optional[str] = Form(None),
             .filter(models.UserAccountTransactions.status == "Request") \
             .order_by(desc(models.UserAccountTransactions.transaction_id)) \
             .all()
+
+        reg_sum_amount = 0
+        reg_sum_balance = 0
+        for amount in dh:
+            reg_sum_amount += amount.amount
+            reg_sum_balance += amount.balance
 
     if which == 'approval':
         dg = db.query(models.UserAccountTransactions.transaction_id,
@@ -494,6 +512,12 @@ async def get_all_expense_list(which: Optional[str] = Form(None),
                     func.date(models.UserAccountTransactions.request_date) <= end_date) \
             .order_by(desc(models.UserAccountTransactions.transaction_id)) \
             .all()
+        apr_sum_amount = 0
+        apr_sum_balance = 0
+        for amount in dg:
+            apr_sum_amount += amount.amount
+            apr_sum_balance += amount.balance
+
     else:
         dg = db.query(models.UserAccountTransactions.transaction_id,
                       models.UserAccountTransactions.narration,
@@ -519,6 +543,11 @@ async def get_all_expense_list(which: Optional[str] = Form(None),
             .filter(models.UserAccountTransactions.status == "Approved") \
             .order_by(desc(models.UserAccountTransactions.transaction_id)) \
             .all()
+        apr_sum_amount = 0
+        apr_sum_balance = 0
+        for amount in dg:
+            apr_sum_amount += amount.amount
+            apr_sum_balance += amount.balance
 
     if which == 'reject':
         df = db.query(models.UserAccountTransactions.transaction_id,
@@ -547,6 +576,12 @@ async def get_all_expense_list(which: Optional[str] = Form(None),
                     func.date(models.UserAccountTransactions.request_date) <= end_date) \
             .order_by(desc(models.UserAccountTransactions.transaction_id)) \
             .all()
+        rej_sum_amount = 0
+        rej_sum_balance = 0
+        for amount in df:
+            rej_sum_amount += amount.amount
+            rej_sum_balance += amount.balance
+
     else:
         df = db.query(models.UserAccountTransactions.transaction_id,
                       models.UserAccountTransactions.narration,
@@ -572,6 +607,11 @@ async def get_all_expense_list(which: Optional[str] = Form(None),
             .filter(models.UserAccountTransactions.status == "Rejected") \
             .order_by(desc(models.UserAccountTransactions.transaction_id)) \
             .all()
+        rej_sum_amount = 0
+        rej_sum_balance = 0
+        for amount in df:
+            rej_sum_amount += amount.amount
+            rej_sum_balance += amount.balance
 
     if which == 'disburse':
         dk = db.query(models.UserAccountTransactions.transaction_id,
@@ -600,6 +640,11 @@ async def get_all_expense_list(which: Optional[str] = Form(None),
                     func.date(models.UserAccountTransactions.request_date) <= end_date) \
             .order_by(desc(models.UserAccountTransactions.transaction_id)) \
             .all()
+        dis_sum_amount = 0
+        dis_sum_balance = 0
+        for amount in dk:
+            dis_sum_amount += amount.amount
+            dis_sum_balance += amount.balance
     else:
         dk = db.query(models.UserAccountTransactions.transaction_id,
                       models.UserAccountTransactions.narration,
@@ -625,12 +670,25 @@ async def get_all_expense_list(which: Optional[str] = Form(None),
             .filter(models.UserAccountTransactions.status == "Disbursed") \
             .order_by(desc(models.UserAccountTransactions.transaction_id)) \
             .all()
+        dis_sum_amount = 0
+        dis_sum_balance = 0
+        for amount in dk:
+            dis_sum_amount += amount.amount
+            dis_sum_balance += amount.balance
 
     return {
         "Requested_Expenses": dh,
+        "reg_amount_sum": reg_sum_amount,
+        "reg_balance_sum": reg_sum_balance,
         "Approved_Expenses": dg,
+        "apr_amount_sum": apr_sum_amount,
+        "apr_balance_sum": apr_sum_balance,
         "Rejected_Expenses": df,
-        "Disbursed_Expenses": dk
+        "rej_amount_sum": rej_sum_amount,
+        "rej_balance_sum": rej_sum_balance,
+        "Disbursed_Expenses": dk,
+        "dis_amount_sum": dis_sum_amount,
+        "dis_balance_sum": dis_sum_balance,
     }
 
 
@@ -787,6 +845,7 @@ async def get_my_account_details(user: dict = Depends(get_current_user),
         .join(models.UserAccount,
               models.UserAccount.user_account_id == models.UserAccountTransactions.user_account_id) \
         .filter(models.UserAccount.user_id == user.get("id")) \
+        .order_by(desc(models.UserAccountTransactions.transaction_id)) \
         .all()
     return {"Details": details, "Transactions": transactions}
 
@@ -1613,3 +1672,104 @@ async def get_commodity_info(commodity_account_id: int,
         return {}
 
     return data_nkoa_json
+
+
+@router.post("/process/storage")
+async def process_storage(commodity_id: int = Form(...),
+                          grade_id: int = Form(...),
+                          unit_id: int = Form(...),
+                          amount_storing: int = Form(...),
+                          member_com_acc: int = Form(...),
+                          rebag: bool = Form(...),
+                          stack: bool = Form(...),
+                          clean: bool = Form(...),
+                          destone: bool = Form(...),
+                          store: bool = Form(...),
+                          stitch: bool = Form(...),
+                          load: bool = Form(...),
+                          empty_sack: bool = Form(...),
+                          user: dict = Depends(get_current_user),
+                          db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    # UnitKg details
+    unit = db.query(models.UnitsKg) \
+        .filter(models.UnitsKg.id == unit_id).first()
+    # Grade & Price details
+    details = db.query(models.CommodityGradeValues) \
+        .filter(models.CommodityGradeValues.id == grade_id).first()
+    # Commodity details
+    commodity = db.query(models.Commodities) \
+        .filter(models.Commodities.id == commodity_id).first()
+    # Charges & warehouse details
+    charges = db.query(models.CommodityAccount) \
+        .select_from(models.MemberCommodityAccount) \
+        .join(models.CommodityAccount,
+              models.CommodityAccount.id == models.MemberCommodityAccount.commodity_id) \
+        .filter(models.MemberCommodityAccount.id == member_com_acc) \
+        .first()
+
+    weight = unit.unit_per_kg * amount_storing
+    tons = f"{weight / 1000} tonnes" if weight > 1000 else f"Less than a ton"
+    original_price_per_bg = unit.unit_per_kg * details.price_per_kg
+    price_per_bg = 0
+    # Rebagging
+    if rebag:
+        price_per_bg = original_price_per_bg - charges.rebagging_fee
+    else:
+        price_per_bg = original_price_per_bg
+    # Stacking
+    if stack:
+        price_per_bg = price_per_bg - charges.stacking_fee
+    else:
+        price_per_bg = price_per_bg
+    # Destoning
+    if destone:
+        price_per_bg = price_per_bg - charges.destoning_fee
+    else:
+        price_per_bg = price_per_bg
+    # Cleaning
+    if clean:
+        price_per_bg = price_per_bg - charges.cleaning_fee
+    else:
+        price_per_bg = price_per_bg
+    # Storage
+    if store:
+        price_per_bg = price_per_bg - charges.storage_fee
+    else:
+        price_per_bg = price_per_bg
+    # Stitching
+    if stitch:
+        price_per_bg = price_per_bg - charges.stitching_fee
+    else:
+        price_per_bg = price_per_bg
+    # Loading
+    if load:
+        price_per_bg = price_per_bg - charges.loading_fee
+    else:
+        price_per_bg = price_per_bg
+    # Empty sack
+    if empty_sack:
+        price_per_bg = price_per_bg - charges.empty_sack_cost_fee
+    else:
+        price_per_bg = price_per_bg
+
+    total_price_value = price_per_bg * amount_storing
+
+    return {
+        "Commodity": commodity.commodity,
+        "Grade": details.grade,
+        "Current_commodity_price": details.price_per_kg,
+        "Unit/kg": unit.unit_per_kg,
+        "Amount_storing": amount_storing,
+        "Weight": weight,
+        "Tons": tons,
+        "Price_per_bag": original_price_per_bg,
+        "charged_price_per_bg": price_per_bg,
+        "total_cash_value": total_price_value
+    }
+
+
+
+
+

@@ -337,8 +337,13 @@ def update_passbook_id(association_member_id: int = Form(...),
     if user is None:
         raise get_user_exception()
 
+    in_asso = db.query(models.Association).join(models.AssociationMembers, models.Association.association_id == models.AssociationMembers.association_id) \
+        .filter(models.AssociationMembers.association_members_id == association_member_id) \
+        .first()
+
     exist = db.query(models.AssociationMembers) \
-        .filter(models.AssociationMembers.passbook_id == new_passbook_id) \
+        .filter(models.AssociationMembers.passbook_id == new_passbook_id,
+                models.AssociationMembers.association_id == in_asso.association_id) \
         .first()
     if exist:
         return "Passbook id already exist in Association"
@@ -357,24 +362,35 @@ def register_member(member_Id: int,
         last_data = db.query(
             models.Association.association_name,
             models.AssociationMembers.association_members_id,
-            models.AssociationMembers.passbook_id
+            models.AssociationMembers.passbook_id,
+            models.AssociationType.association_type,
         ) \
             .select_from(models.AssociationMembers) \
             .join(
             models.Association,
             models.Association.association_id == models.AssociationMembers.association_id
         ) \
+            .join(models.AssociationType,
+                  models.AssociationType.associationtype_id == models.Association.association_type_id) \
             .filter(models.AssociationMembers.association_id == association_Id) \
             .order_by(desc(models.AssociationMembers.association_members_id)) \
             .first()
 
         if last_data is None:
-            asso = db.query(models.Association).filter(models.Association.association_id == association_Id).first()
-            association_name = asso.association_name
+            asso = (db.query(models.Association.association_name,
+                             models.AssociationType.association_type)
+                    .select_from(models.Association)
+                    .join(models.AssociationType,
+                          models.AssociationType.associationtype_id == models.Association.association_type_id) \
+                    .filter(models.Association.association_id == association_Id).first())
 
+            association_name = asso.association_name
+            type_name = asso.association_type
+
+            first_two_type_char = type_name[:1]
             first_two_characters = association_name[:2]
             passbook_id_suffix = 000 + 1
-            new_passbook_id = f"{first_two_characters}{passbook_id_suffix:03d}"
+            new_passbook_id = f"{first_two_type_char}{first_two_characters}{passbook_id_suffix:03d}"
 
             associationMember_model = models.AssociationMembers(
                 passbook_id=new_passbook_id,
@@ -391,13 +407,14 @@ def register_member(member_Id: int,
             else:
                 last_passbook_id = last_data[2]
 
+            first_one_type_char = last_data.association_type[:1]
             first_two_characters = association_name[:2]
             if last_data.passbook_id is None:
                 passbook_id_suffix = 000
             else:
                 passbook_id_suffix = last_passbook_id[2:]
             passbook_id_suffix_number = int(passbook_id_suffix) + 1
-            new_passbook_id = f"{first_two_characters}{passbook_id_suffix_number:03d}"
+            new_passbook_id = f"{first_one_type_char}{first_two_characters}{passbook_id_suffix_number:03d}"
 
             associationMember_model = models.AssociationMembers(
                 passbook_id=new_passbook_id,
@@ -836,13 +853,18 @@ async def get_member_passbook_id(association_member_id: int,
     if user is None:
         raise get_user_exception()
 
-    association_initials = db.query(models.Association) \
+    association_initials = db.query(models.Association.association_name,
+                                    models.AssociationType.association_type) \
+        .select_from(models.Association) \
+        .join(models.AssociationType, models.AssociationType.associationtype_id == models.Association.association_type_id) \
         .join(models.AssociationMembers, models.Association.association_id == models.AssociationMembers.association_id) \
         .filter(models.AssociationMembers.association_members_id == association_member_id) \
         .order_by(desc(models.AssociationMembers.association_members_id)) \
         .first()
+    type_initials = association_initials.association_type[:1]
+    asso_intitials = association_initials.association_name[:2]
 
-    initials = association_initials.association_name[:2]
+    initials = f"{type_initials}{asso_intitials}"
 
     passbook_id = db.query(models.AssociationMembers).filter(
         models.AssociationMembers.association_members_id == association_member_id).first()

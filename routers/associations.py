@@ -518,7 +518,6 @@ async def get_shares_in_association(association_id: int = Form(...),
         raise get_user_exception()
 
     result = []
-
     if start_date is None:
         shares = db.query(models.SharesTransaction,
                           models.ShareCert) \
@@ -537,6 +536,7 @@ async def get_shares_in_association(association_id: int = Form(...),
                     models.SharesTransaction.transactiontype_id == 1) \
             .order_by(desc(models.SharesTransaction.transaction_id)) \
             .all()
+
     else:
         shares = db.query(models.SharesTransaction,
                           models.ShareCert) \
@@ -558,6 +558,8 @@ async def get_shares_in_association(association_id: int = Form(...),
             .order_by(desc(models.SharesTransaction.transaction_id)) \
             .all()
 
+    amount_sum = 0
+    total_interest_sum = 0
     for share in shares:
         # srt = datetime.strftime(share.ShareCert.starting_date)
         result.append({
@@ -566,14 +568,16 @@ async def get_shares_in_association(association_id: int = Form(...),
             "Prepared_by": share.SharesTransaction.prepared_by.username,
             "Narration": share.SharesTransaction.narration,
             "Transaction_date": share.SharesTransaction.transaction_date,
-            "Member_name": share.SharesTransaction.shares_accounts.meid.firstname + " " + share.SharesTransaction.shares_accounts.meid.lastname,
+            "Member_name": share.SharesTransaction.shares_accounts.meid.firstname + " " + share.SharesTransaction.shares_accounts.meid.lastname if share.SharesTransaction.shares_accounts.meid.lastname else "",
             "Member_id": share.SharesTransaction.shares_accounts.meid.member_id,
             "Period": share.ShareCert.period,
             "Total_Interest": share.ShareCert.interest_rate_amount,
             # "Weeks_Left":  - share.ShareCert.ending_date
         })
+        amount_sum += share.SharesTransaction.amount
+        total_interest_sum += share.ShareCert.interest_rate_amount
 
-    return result
+    return {"results": result, "total_amount": amount_sum, "total_interest": round(total_interest_sum, 3)}
 
 
 @router.get("/loans/info/{association_id}")
@@ -598,6 +602,8 @@ async def get_requested_loans_in_association(association_id: int,
         .all()
 
     results = []
+    reg_amount_sum = 0
+
     for loan in loans:
         results.append({
             "Transaction_id": loan.transaction_id,
@@ -605,11 +611,12 @@ async def get_requested_loans_in_association(association_id: int,
             "Prepared_by": loan.prepared_by.username,
             "Narration": loan.narration,
             "Transaction_date": loan.transaction_date,
-            "Member_name": loan.loan_account.membersowwn.firstname + " " + loan.loan_account.membersowwn.lastname,
+            "Member_name": loan.loan_account.membersowwn.firstname + " " + loan.loan_account.membersowwn.lastname if loan.loan_account.membersowwn.lastname else "",
             "Member_id": loan.loan_account.membersowwn.member_id
         })
+        reg_amount_sum += loan.amount
 
-    return results
+    return {"results": results, "total": reg_amount_sum}
 
 
 @router.post("/loans/info")
@@ -640,6 +647,7 @@ async def get_filtered_requested_loans_in_association(association_id: int = Form
         .all()
 
     results = []
+    reg_amount_sum = 0
     for loan in loans:
         results.append({
             "Transaction_id": loan.transaction_id,
@@ -647,11 +655,12 @@ async def get_filtered_requested_loans_in_association(association_id: int = Form
             "Prepared_by": loan.prepared_by.username,
             "Narration": loan.narration,
             "Transaction_date": loan.transaction_date,
-            "Member_name": loan.loan_account.membersowwn.firstname + " " + loan.loan_account.membersowwn.lastname,
+            "Member_name": loan.loan_account.membersowwn.firstname + " " + loan.loan_account.membersowwn.lastname if loan.loan_account.membersowwn.lastname else "",
             "Member_id": loan.loan_account.membersowwn.member_id
         })
+        reg_amount_sum += loan.amount
 
-    return results
+    return {"results": results, "total": reg_amount_sum}
 
 
 @router.get("/loans/approved/{association_id}")
@@ -676,6 +685,7 @@ async def get_approved_loans_in_association(association_id: int,
         .all()
 
     results = []
+    apr_amount_sum = 0
     for loan in loans:
         results.append({
             "Transaction_id": loan.transaction_id,
@@ -683,11 +693,12 @@ async def get_approved_loans_in_association(association_id: int,
             "Prepared_by": loan.prepared_by.username,
             "Narration": loan.narration,
             "Transaction_date": loan.transaction_date,
-            "Member_name": loan.loan_account.membersowwn.firstname + " " + loan.loan_account.membersowwn.lastname,
+            "Member_name": loan.loan_account.membersowwn.firstname + " " + loan.loan_account.membersowwn.lastname if loan.loan_account.membersowwn.lastname else "",
             "Member_id": loan.loan_account.membersowwn.member_id
         })
+        apr_amount_sum += loan.amount
 
-    return results
+    return {"results": results, "total": apr_amount_sum}
 
 
 @router.post("/loans/approved")
@@ -718,6 +729,7 @@ async def get_filtered_approved_loans_in_association(association_id: int = Form(
         .all()
 
     results = []
+    apr_amount_sum = 0
     for loan in loans:
         results.append({
             "Transaction_id": loan.transaction_id,
@@ -725,11 +737,12 @@ async def get_filtered_approved_loans_in_association(association_id: int = Form(
             "Prepared_by": loan.prepared_by.username,
             "Narration": loan.narration,
             "Transaction_date": loan.transaction_date,
-            "Member_name": loan.loan_account.membersowwn.firstname + " " + loan.loan_account.membersowwn.lastname,
+            "Member_name": loan.loan_account.membersowwn.firstname + " " + loan.loan_account.membersowwn.lastname if loan.loan_account.membersowwn.lastname else "",
             "Member_id": loan.loan_account.membersowwn.member_id
         })
+        apr_amount_sum += loan.amount
 
-    return results
+    return {"results": results, "total": apr_amount_sum}
 
 
 @router.get("/loans/disbursed/{association_id}")
@@ -754,6 +767,7 @@ async def get_disbursed_loans_in_association(association_id: int,
         .all()
 
     results = []
+    dis_amount_sum = 0
     for loan in loans:
         results.append({
             "Transaction_id": loan.transaction_id,
@@ -763,11 +777,12 @@ async def get_disbursed_loans_in_association(association_id: int,
             "Transaction_date": loan.transaction_date,
             "Repayment_starts": loan.repayment_starts,
             "Repayment_ends": loan.repayment_ends,
-            "Member_name": loan.loan_account.membersowwn.firstname + " " + loan.loan_account.membersowwn.lastname,
+            "Member_name": loan.loan_account.membersowwn.firstname + " " + loan.loan_account.membersowwn.lastname if loan.loan_account.membersowwn.lastname else "",
             "Member_id": loan.loan_account.membersowwn.member_id
         })
+        dis_amount_sum += loan.amount
 
-    return results
+    return {"results": results, "total": dis_amount_sum}
 
 
 @router.post("/loans/disbursed")
@@ -798,6 +813,7 @@ async def get_filtered_disbursed_loans_in_association(association_id: int = Form
         .all()
 
     results = []
+    dis_amount_sum = 0
     for loan in loans:
         results.append({
             "Transaction_id": loan.transaction_id,
@@ -807,11 +823,13 @@ async def get_filtered_disbursed_loans_in_association(association_id: int = Form
             "Transaction_date": loan.transaction_date,
             "Repayment_starts": loan.repayment_starts,
             "Repayment_ends": loan.repayment_ends,
-            "Member_name": loan.loan_account.membersowwn.firstname + " " + loan.loan_account.membersowwn.lastname,
+            "Member_name": loan.loan_account.membersowwn.firstname + " " + loan.loan_account.membersowwn.lastname if loan.loan_account.membersowwn.lastname else "",
             "Member_id": loan.loan_account.membersowwn.member_id
         })
 
-    return results
+        dis_amount_sum += loan.amount
+
+    return {"results": results, "total": dis_amount_sum}
 
 
 @router.get("/passbook/info/{association_id}")
@@ -824,8 +842,6 @@ async def get_association_passbook_info_yeah(association_id: int,
     tday = datetime.now()
     today = tday.strftime("%Y-%m-%d")
     yesterday_date = datetime.now() - timedelta(days=1)
-    yesterday = yesterday_date.strftime("%Y-%m-%d")
-    # print(yestaday)
     seen_ids = set()
     tra = []
     todayy = db.query(models.CashAssociationAccount).filter(models.CashAssociationAccount.date == today,
@@ -833,58 +849,86 @@ async def get_association_passbook_info_yeah(association_id: int,
 
     yestaday = db.query(models.CashAssociationAccount).filter(
         models.CashAssociationAccount.association_id == association_id,
-        models.CashAssociationAccount.date < today).first()
+        models.CashAssociationAccount.date < today).all()
+
+    boom = []
+    cash_savings_bal = 0
+    cash_loans_bal = 0
+    cash_shares_bal = 0
+    withdrawal_value = 0
+    transfers_value = 0
+    loan_disbursed = 0
+    for item in yestaday:
+        cash_savings_bal += item.cash_savings_bal
+        cash_loans_bal += item.cash_loans_bal
+        cash_shares_bal += item.cash_shares_bal
+        withdrawal_value += item.withdrawal_value
+        transfers_value += item.transfers_value
+        loan_disbursed += item.loan_disbursed
+    boom.append({
+        "cash_savings_bal": cash_savings_bal,
+        "cash_loans_bal": cash_loans_bal,
+        "cash_shares_bal": cash_shares_bal,
+        "withdrawal_value": withdrawal_value,
+        "transfers_value": transfers_value,
+        "loan_disbursed": loan_disbursed
+    })
 
     data = {}
+    yesterday = boom[0]
 
-    if todayy.cash_savings_bal is None:
-        data["id"] = yestaday.id
-        data["Starting_Savings"] = yestaday.cash_savings_bal
+    if todayy is None:
+        data["id"] = 1
+        data["Starting_Savings"] = yesterday["cash_savings_bal"] if yestaday else 0
         data["Current_Savings"] = 0
-        data["Addition_Subtraction_in_Savings"] = 0 + yestaday.cash_savings_bal
+        data["Addition_Subtraction_in_Savings"] = 0 + yesterday["cash_savings_bal"] if yestaday else 0
     else:
         data["id"] = todayy.id
-        data["Starting_Savings"] = yestaday.cash_savings_bal
+        data["Starting_Savings"] = yesterday["cash_savings_bal"] if yestaday else 0
         data["Current_Savings"] = todayy.cash_savings_bal
-        data["Addition_Subtraction_in_Savings"] = todayy.cash_savings_bal + yestaday.cash_savings_bal
+        data["Addition_Subtraction_in_Savings"] = todayy.cash_savings_bal + yesterday["cash_savings_bal"] if yestaday else 0
 
-    if todayy.cash_loans_bal is None:
-        data["Starting_Loans"] = yestaday.cash_loans_bal
+    if todayy is None:
+        data["Starting_Loans"] = yesterday["cash_loans_bal"] if yestaday else 0
         data["Current_Loans"] = 0
-        data["Addition_Subtraction_in_Loans"] = 0 + yestaday.cash_loans_bal
-        data["Loan_Disbursed"] = 0 + yestaday.loan_disbursed
+        data["Addition_Subtraction_in_Loans"] = 0 + yesterday["cash_loans_bal"] if yestaday else 0
+        data["Prev_Loan_Disbursed"] = yesterday["loan_disbursed"] if yestaday else 0
+        data["Today_Loan_Disbursed"] = 0
+        data["Loan_Disbursed"] = 0 + yesterday["loan_disbursed"] if yestaday else 0
     else:
-        data["Starting_Loans"] = yestaday.cash_loans_bal
+        data["Starting_Loans"] = yesterday["cash_loans_bal"] if yestaday else 0
         data["Current_Loans"] = todayy.cash_loans_bal
-        data["Addition_Subtraction_in_Loans"] = todayy.cash_loans_bal + yestaday.cash_loans_bal
-        data["Loan_Disbursed"] = todayy.loan_disbursed + yestaday.loan_disbursed
+        data["Addition_Subtraction_in_Loans"] = todayy.cash_loans_bal + yesterday["cash_loans_bal"] if yestaday else 0
+        data["Prev_Loan_Disbursed"] = yesterday["loan_disbursed"] if yestaday else 0
+        data["Today_Loan_Disbursed"] = todayy.loan_disbursed
+        data["Loan_Disbursed"] = todayy.loan_disbursed + yesterday["loan_disbursed"] if yestaday else 0
 
-    if todayy.cash_shares_bal is None:
-        data["Starting_Shares"] = yestaday.cash_shares_bal
+    if todayy is None:
+        data["Starting_Shares"] = yesterday["cash_shares_bal"] if yestaday else 0
         data["Current_Shares"] = 0
-        data["Addition_Subtraction_in_Shares"] = 0 + yestaday.cash_shares_bal
+        data["Addition_Subtraction_in_Shares"] = 0 + yesterday["cash_shares_bal"] if yestaday else 0
     else:
-        data["Starting_Shares"] = yestaday.cash_shares_bal
+        data["Starting_Shares"] = yesterday["cash_shares_bal"] if yestaday else 0
         data["Current_Shares"] = todayy.cash_shares_bal
-        data["Addition_Subtraction_in_Shares"] = todayy.cash_shares_bal + yestaday.cash_shares_bal
+        data["Addition_Subtraction_in_Shares"] = todayy.cash_shares_bal + yesterday["cash_shares_bal"] if yestaday else 0
 
-    if todayy.withdrawal_value is None:
-        data["Starting_Withdraws"] = yestaday.withdrawal_value
+    if todayy is None:
+        data["Starting_Withdraws"] = yesterday["withdrawal_value"] if yestaday else 0
         data["Current_Withdraws"] = 0
-        data["Addition_Subtraction_in_Withdraws"] = 0 + yestaday.withdrawal_value
+        data["Addition_Subtraction_in_Withdraws"] = 0 + yesterday["withdrawal_value"] if yestaday else 0
     else:
-        data["Starting_Withdraws"] = yestaday.withdrawal_value
+        data["Starting_Withdraws"] = yesterday["withdrawal_value"] if yestaday else 0
         data["Current_Withdraws"] = todayy.withdrawal_value
-        data["Addition_Subtraction_in_Withdraws"] = todayy.withdrawal_value + yestaday.withdrawal_value
+        data["Addition_Subtraction_in_Withdraws"] = todayy.withdrawal_value + yesterday["withdrawal_value"] if yestaday else 0
 
-    if todayy.transfers_value is None:
-        data["Starting_Transfers"] = yestaday.transfers_value
+    if todayy is None:
+        data["Starting_Transfers"] = yesterday["transfers_value"] if yestaday else 0
         data["Current_Transfers"] = 0
-        data["Addition_Subtraction_in_Transfers"] = 0 + yestaday.transfers_value
+        data["Addition_Subtraction_in_Transfers"] = 0 + yesterday["transfers_value"] if yestaday else 0
     else:
-        data["Starting_Transfers"] = yestaday.transfers_value
+        data["Starting_Transfers"] = yesterday["transfers_value"] if yestaday else 0
         data["Current_Transfers"] = todayy.transfers_value
-        data["Addition_Subtraction_in_Transfers"] = todayy.transfers_value + yestaday.transfers_value
+        data["Addition_Subtraction_in_Transfers"] = todayy.transfers_value + yesterday["transfers_value"] if yestaday else 0
 
     tra.append(data)
     return tra
@@ -1329,7 +1373,8 @@ async def set_cash_account_balances(association_id: int,
     todays_savings_accounts_transfers_total = sum(
         transaction.amount for transaction in todays_savings_accounts_transfers)
     total_cash_value = (
-            today_savings_total + today_loans_total + today_share_total + today_withdrawals_total + todays_savings_accounts_transfers_total)
+            (
+                    today_savings_total + today_loans_total + today_share_total + todays_savings_accounts_transfers_total) - today_withdrawals_total)
 
     today = db.query(models.CashAssociationAccount) \
         .filter(models.CashAssociationAccount.date == today_date,
@@ -1361,14 +1406,21 @@ async def set_cash_account_balances(association_id: int,
     bomn = datetime.now()
     tdll = bomn.strftime('%Y-%m-%d')
     dss = db.query(models.MomoAccountAssociation).order_by(desc(models.MomoAccountAssociation.id)).first()
-    df = models.MomoAccountAssociation(
-        date=tdll,
-        momo_bal=0.00,
-        association_id=association_id,
-        status="Not Reconciled",
-        button="Reconcile",
-        current_balance=dss.current_balance
-    )
+    gh = db.query(models.MomoAccountAssociation).filter(models.MomoAccountAssociation.association_id == association_id,
+                                                        models.MomoAccountAssociation.date == tdll).first()
+    if gh:
+        pass
+    else:
+        df = models.MomoAccountAssociation(
+            date=tdll,
+            momo_bal=0.00,
+            association_id=association_id,
+            status="Not Reconciled",
+            button="Reconcile",
+            current_balance=dss.current_balance if dss else 0.00
+        )
+        db.add(df)
+        db.commit()
 
 
 @router.get("/transfer/banks/{association_id}")
@@ -1401,6 +1453,10 @@ async def momo_transactions(association_id: int = Form(...),
 
     current_date = datetime.now()
     today_date = current_date.strftime('%Y-%m-%d')
+
+    total_with = 0
+    total_dep = 0
+
     if end_date or start_date:
         trs = db.query(models.MomoAccountTransactions.transaction_date,
                        models.MomoAccountTransactions.transaction_type,
@@ -1432,14 +1488,24 @@ async def momo_transactions(association_id: int = Form(...),
             .filter(models.MomoAccountTransactions.association_id == association_id) \
             .order_by(desc(models.MomoAccountTransactions.transaction_id)) \
             .all()
+    for item in trs:
+        if item.transaction_type == 1:
+            total_dep += item.amount
+        elif item.transaction_type == 2:
+            total_with += item.amount
+
     # print(trs)
     acc = db.query(models.MomoAccountAssociation) \
         .filter(models.MomoAccountAssociation.association_id == association_id) \
         .order_by(desc(models.MomoAccountAssociation.id)) \
         .first()
 
-    return {"Trs": trs,
-            "Acc": acc}
+    return {
+        "Trs": trs,
+        "Acc": acc,
+        "total_dep": total_dep,
+        "total_with": total_with
+    }
 
 
 @router.get("/momo/transactions/one/{association_id}")
@@ -2071,43 +2137,43 @@ async def get_cash_account_balance_society(society_id: int,
 
     comparing_table = []
 
-    today_cash_amounts = db.query(models.CashAssociationAccount.date,
-                                  models.CashAssociationAccount.id,
-                                  models.CashAssociationAccount.cash_savings_bal,
-                                  models.CashAssociationAccount.cash_loans_bal,
-                                  models.CashAssociationAccount.cash_shares_bal,
-                                  models.CashAssociationAccount.cash_value,
-                                  models.CashAssociationAccount.transfers_value,
-                                  models.CashAssociationAccount.withdrawal_value,
-                                  models.Association.association_name
-                                  ) \
-        .join(models.Association,
-              models.Association.association_id == models.CashAssociationAccount.association_id) \
-        .join(models.AssociationType,
-              models.AssociationType.associationtype_id == models.Association.association_type_id) \
-        .join(models.Society,
-              models.Society.id == models.AssociationType.society_id) \
-        .filter(models.Society.id == society_id,
-                models.CashAssociationAccount.date < today_date) \
-        .all()
-
-    today_ecash_amounts = db.query(models.MomoAccountAssociation.date,
-                                   models.MomoAccountAssociation.id,
-                                   models.MomoAccountAssociation.momo_bal,
-                                   models.MomoAccountAssociation.status,
-                                   models.MomoAccountAssociation.button,
-                                   models.Association.association_name,
-                                   ) \
-        .select_from(models.MomoAccountAssociation) \
-        .join(models.Association,
-              models.Association.association_id == models.MomoAccountAssociation.association_id) \
-        .join(models.AssociationType,
-              models.AssociationType.associationtype_id == models.Association.association_type_id) \
-        .join(models.Society,
-              models.Society.id == models.AssociationType.society_id) \
-        .filter(models.Society.id == society_id,
-                models.MomoAccountAssociation.date < today_date) \
-        .all()
+    # today_cash_amounts = db.query(models.CashAssociationAccount.date,
+    #                               models.CashAssociationAccount.id,
+    #                               models.CashAssociationAccount.cash_savings_bal,
+    #                               models.CashAssociationAccount.cash_loans_bal,
+    #                               models.CashAssociationAccount.cash_shares_bal,
+    #                               models.CashAssociationAccount.cash_value,
+    #                               models.CashAssociationAccount.transfers_value,
+    #                               models.CashAssociationAccount.withdrawal_value,
+    #                               models.Association.association_name
+    #                               ) \
+    #     .join(models.Association,
+    #           models.Association.association_id == models.CashAssociationAccount.association_id) \
+    #     .join(models.AssociationType,
+    #           models.AssociationType.associationtype_id == models.Association.association_type_id) \
+    #     .join(models.Society,
+    #           models.Society.id == models.AssociationType.society_id) \
+    #     .filter(models.Society.id == society_id,
+    #             models.CashAssociationAccount.date <= today_date) \
+    #     .all()
+    #
+    # today_ecash_amounts = db.query(models.MomoAccountAssociation.date,
+    #                                models.MomoAccountAssociation.id,
+    #                                models.MomoAccountAssociation.momo_bal,
+    #                                models.MomoAccountAssociation.status,
+    #                                models.MomoAccountAssociation.button,
+    #                                models.Association.association_name,
+    #                                ) \
+    #     .select_from(models.MomoAccountAssociation) \
+    #     .join(models.Association,
+    #           models.Association.association_id == models.MomoAccountAssociation.association_id) \
+    #     .join(models.AssociationType,
+    #           models.AssociationType.associationtype_id == models.Association.association_type_id) \
+    #     .join(models.Society,
+    #           models.Society.id == models.AssociationType.society_id) \
+    #     .filter(models.Society.id == society_id,
+    #             models.MomoAccountAssociation.date <= today_date) \
+    #     .all()
 
     maa = aliased(models.MomoAccountAssociation)
     caa = aliased(models.CashAssociationAccount)
@@ -2137,8 +2203,7 @@ async def get_cash_account_balance_society(society_id: int,
     ).join(models.Society,
            models.Society.id == models.AssociationType.society_id
            ).filter(
-        models.Society.id == society_id,
-        maa.date != today_date
+        models.Society.id == society_id
     ).all()
 
     return {"Data": result}
@@ -2190,7 +2255,6 @@ async def get_filterd_cash_account_balance_society(society: Filterd,
            models.Society.id == models.AssociationType.society_id
            ).filter(
         models.Society.id == society.society_id,
-        maa.date != today_date,
         maa.date >= society.fromm,
         maa.date <= society.to
     ).all()
@@ -2218,6 +2282,7 @@ async def get_all_transactions_combined_today(association_id: int,
                                                     models.TransactionType.transactiontype_name,
                                                     models.SavingsTransaction.amount,
                                                     models.AssociationMembers.association_members_id,
+                                                    models.AssociationMembers.passbook_id,
                                                     # models.SavingsTransaction.transactiontype_id,
                                                     models.SavingsTransaction.transaction_date,
                                                     models.SavingsAccount.account_name,
@@ -2251,6 +2316,7 @@ async def get_all_transactions_combined_today(association_id: int,
                                                    models.TransactionType.transactiontype_name,
                                                    models.SavingsTransaction.amount,
                                                    models.AssociationMembers.association_members_id,
+                                                   models.AssociationMembers.passbook_id,
                                                    models.SavingsTransaction.transactiontype_id,
                                                    models.SavingsTransaction.transaction_date,
                                                    models.SavingsTransaction.narration,
@@ -2282,6 +2348,8 @@ async def get_all_transactions_combined_today(association_id: int,
                                                  models.Members.member_id,
                                                  models.TransactionType.transactiontype_name,
                                                  models.SavingsTransaction.amount,
+                                                 models.AssociationMembers.association_members_id,
+                                                 models.AssociationMembers.passbook_id,
                                                  models.SavingsTransaction.transactiontype_id,
                                                  models.SavingsTransaction.transaction_date,
                                                  models.SavingsTransaction.narration,
@@ -2313,6 +2381,7 @@ async def get_all_transactions_combined_today(association_id: int,
                                                  models.TransactionType.transactiontype_name,
                                                  models.LoansTransaction.amount,
                                                  models.AssociationMembers.association_members_id,
+                                                 models.AssociationMembers.passbook_id,
                                                  models.LoansTransaction.transaction_date,
                                                  models.LoanAccount.account_name,
                                                  # models.LoansTransaction.narration,
@@ -2343,6 +2412,7 @@ async def get_all_transactions_combined_today(association_id: int,
                                                   models.TransactionType.transactiontype_name,
                                                   models.SharesTransaction.amount,
                                                   models.AssociationMembers.association_members_id,
+                                                  models.AssociationMembers.passbook_id,
                                                   models.SharesTransaction.transaction_date,
                                                   models.ShareAccount.account_name,
                                                   # models.SharesTransaction.narration,
@@ -2368,6 +2438,8 @@ async def get_all_transactions_combined_today(association_id: int,
     # today_transaction = union_all([todays_savings_accounts_transactions,
     #                                todays_share_accounts_transactions,
     #                                todays_loan_accounts_transactions])
+    total_with = 0
+    total_dep = 0
     all_one = []
     for item in todays_savings_accounts_transactions:
         all_one.append(item)
@@ -2375,12 +2447,18 @@ async def get_all_transactions_combined_today(association_id: int,
         all_one.append(item)
     for item in todays_loan_accounts_transactions:
         all_one.append(item)
+    for item in all_one:
+        total_dep += item.amount if item.transactiontype_name == "Deposit" else 0
+
 
     # all_them = [todays_savings_accounts_transactions, todays_share_accounts_transactions,
     #             todays_loan_accounts_transactions]
-    return {"All_One": all_one,
-            "Withdrawals": todays_savings_accounts_withdrawals,
-            "Transfers": todays_savings_accounts_transfers}
+    return {
+        "All_One": all_one,
+        "Withdrawals": todays_savings_accounts_withdrawals,
+        "Transfers": todays_savings_accounts_transfers,
+        "total_dep": total_dep,
+    }
     # return todays_savings_accounts_transactions, todays_share_accounts_transactions, todays_loan_accounts_transactions
 
 
@@ -2411,10 +2489,11 @@ async def get_all_transactions_combined(som: Som,
                                                     models.TransactionType.transactiontype_name,
                                                     models.SavingsTransaction.amount,
                                                     models.AssociationMembers.association_members_id,
+                                                    models.AssociationMembers.passbook_id,
                                                     # models.SavingsTransaction.transactiontype_id,
                                                     models.SavingsTransaction.transaction_date,
                                                     models.SavingsAccount.account_name,
-                                                    # models.SavingsTransaction.narration,
+                                                    models.SavingsTransaction.narration,
                                                     # models.Users.username,
                                                     ) \
         .select_from(models.Association) \
@@ -2441,9 +2520,10 @@ async def get_all_transactions_combined(som: Som,
                                                  models.TransactionType.transactiontype_name,
                                                  models.LoansTransaction.amount,
                                                  models.AssociationMembers.association_members_id,
+                                                 models.AssociationMembers.passbook_id,
                                                  models.LoansTransaction.transaction_date,
                                                  models.LoanAccount.account_name,
-                                                 # models.LoansTransaction.narration,
+                                                 models.LoansTransaction.narration,
                                                  # models.Users.username
                                                  ) \
         .select_from(models.Association) \
@@ -2457,7 +2537,7 @@ async def get_all_transactions_combined(som: Som,
               models.LoansTransaction.transactiontype_id == models.TransactionType.transactype_id) \
         .join(models.Users, models.Users.id == models.LoansTransaction.prep_by) \
         .filter(models.Association.association_id == som.association_id,
-                models.LoansTransaction.transactiontype_id == 1,
+                # models.LoansTransaction.transactiontype_id == 1,
                 models.LoansTransaction.transaction_date >= end_of_day,
                 models.LoansTransaction.transaction_date <= end_of_day
                 ) \
@@ -2471,9 +2551,10 @@ async def get_all_transactions_combined(som: Som,
                                                   models.TransactionType.transactiontype_name,
                                                   models.SharesTransaction.amount,
                                                   models.AssociationMembers.association_members_id,
+                                                  models.AssociationMembers.passbook_id,
                                                   models.SharesTransaction.transaction_date,
                                                   models.ShareAccount.account_name,
-                                                  # models.SharesTransaction.narration,
+                                                  models.SharesTransaction.narration,
                                                   # models.Users.username
                                                   ) \
         .select_from(models.Association) \
@@ -2496,6 +2577,8 @@ async def get_all_transactions_combined(som: Som,
     # today_transaction = union_all([todays_savings_accounts_transactions,
     #                                todays_share_accounts_transactions,
     #                                todays_loan_accounts_transactions])
+    total_with = 0
+    total_dep = 0
     all_one = []
     for item in todays_savings_accounts_transactions:
         all_one.append(item)
@@ -2503,10 +2586,17 @@ async def get_all_transactions_combined(som: Som,
         all_one.append(item)
     for item in todays_loan_accounts_transactions:
         all_one.append(item)
+    for item in all_one:
+        total_with += item.amount if item.transactiontype_name == "Withdraw" else 0
+        total_dep += item.amount if item.transactiontype_name == "Deposit" else 0
 
     # all_them = [todays_savings_accounts_transactions, todays_share_accounts_transactions,
     #             todays_loan_accounts_transactions]
-    return {"All_One": all_one}
+    return {
+        "All_One": all_one,
+        "total_wit": total_with,
+        "total_dep": total_dep,
+    }
     # return todays_savings_accounts_transactions, todays_share_accounts_transactions, todays_loan_accounts_transactions
 
 
@@ -2610,22 +2700,47 @@ async def get_association_transaction_details(association_id: int,
         .all()
 
     dtat = []
-
-    for i, g in zip(cash_amounts, ecash_amounts):
-        if i.date == g.date:
-            dtat.append({
-                "id": i.id,
-                "date": i.date,
-                "cash_savings_bal": i.cash_savings_bal,
-                "cash_loans_bal": i.cash_loans_bal,
-                "cash_shares_bal": i.cash_shares_bal,
-                "cash_value": i.cash_value,
-                "momo_bal": g.momo_bal,
-                # "Withdraws": i.withdrawal_value,
-                # "Transfers": i.transfers_value
-            })
-    print(dtat)
-    return dtat
+    cash_savings_total = 0
+    cash_loans_total = 0
+    cash_shares_total = 0
+    cash_total = 0
+    momo_total = 0
+    withdrawals_total = 0
+    transfer_total = 0
+    try:
+        for i, g in zip(cash_amounts, ecash_amounts):
+            if i.date == g.date:
+                dtat.append({
+                    "id": i.id,
+                    "date": i.date,
+                    "cash_savings_bal": i.cash_savings_bal,
+                    "cash_loans_bal": i.cash_loans_bal,
+                    "cash_shares_bal": i.cash_shares_bal,
+                    "cash_value": i.cash_value,
+                    "momo_bal": g.momo_bal,
+                    "Withdraws": i.withdrawal_value,
+                    "Transfers": i.transfers_value
+                })
+                cash_savings_total += i.cash_savings_bal
+                cash_loans_total += i.cash_loans_bal
+                cash_shares_total += i.cash_shares_bal
+                cash_total += i.cash_value
+                momo_total += g.momo_bal
+                withdrawals_total += i.withdrawal_value
+                transfer_total += i.transfers_value
+    except Exception as e:
+        print(f"Error during data processing: {e}")
+    # print(dtat)
+    return {
+        "data": dtat,
+        "cash_savings_total": cash_savings_total,
+        "cash_loans_total": cash_loans_total,
+        "cash_shares_total": cash_shares_total,
+        "cash_total": cash_total,
+        "momo_total": momo_total,
+        "withdrawals_total": withdrawals_total,
+        "transfer_total": transfer_total
+    }
 
 
 @router.post("/transaction/sumary")
@@ -2652,7 +2767,7 @@ async def get_filtered_association_transaction_details(association_id: int = For
         .order_by(desc(models.CashAssociationAccount.id)) \
         .all()
 
-    Ecash_amounts = db.query(models.MomoAccountAssociation.date,
+    ecash_amounts = db.query(models.MomoAccountAssociation.date,
                              models.MomoAccountAssociation.id,
                              models.MomoAccountAssociation.momo_bal,
                              ) \
@@ -2663,8 +2778,15 @@ async def get_filtered_association_transaction_details(association_id: int = For
         .all()
 
     dtat = []
+    cash_savings_total = 0
+    cash_loans_total = 0
+    cash_shares_total = 0
+    cash_total = 0
+    momo_total = 0
+    withdrawals_total = 0
+    transfer_total = 0
 
-    for i, g in zip(cash_amounts, Ecash_amounts):
+    for i, g in zip(cash_amounts, ecash_amounts):
         if i.date == g.date:
             dtat.append({
                 "id": i.id,
@@ -2673,10 +2795,28 @@ async def get_filtered_association_transaction_details(association_id: int = For
                 "cash_loans_bal": i.cash_loans_bal,
                 "cash_shares_bal": i.cash_shares_bal,
                 "cash_value": i.cash_value,
-                "momo_bal": g.momo_bal
+                "momo_bal": g.momo_bal,
+                "Withdraws": i.withdrawal_value,
+                "Transfers": i.transfers_value
             })
-
-    return dtat
+            cash_savings_total += i.cash_savings_bal
+            cash_loans_total += i.cash_loans_bal
+            cash_shares_total += i.cash_shares_bal
+            cash_total += i.cash_value
+            momo_total += g.momo_bal
+            withdrawals_total += i.withdrawal_value
+            transfer_total += i.transfers_value
+    # print(dtat)
+    return {
+        "data": dtat,
+        "cash_savings_total": cash_savings_total,
+        "cash_loans_total": cash_loans_total,
+        "cash_shares_total": cash_shares_total,
+        "cash_total": cash_total,
+        "momo_total": momo_total,
+        "withdrawals_total": withdrawals_total,
+        "transfer_total": transfer_total
+    }
 
 
 @router.get("/goto/form")
