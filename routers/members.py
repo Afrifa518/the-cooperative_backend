@@ -412,7 +412,7 @@ def register_member(member_Id: int,
             if last_data.passbook_id is None:
                 passbook_id_suffix = 000
             else:
-                passbook_id_suffix = last_passbook_id[2:]
+                passbook_id_suffix = last_passbook_id[3:]
             passbook_id_suffix_number = int(passbook_id_suffix) + 1
             new_passbook_id = f"{first_one_type_char}{first_two_characters}{passbook_id_suffix_number:03d}"
 
@@ -429,8 +429,8 @@ def register_member(member_Id: int,
             .first()
         default_registration_account(member_Id=member_Id, association_member_id=passbook_id.association_members_id,
                                      db=db)
+        return {f"Member Passbook Number is {passbook_id.association_members_id}"}
 
-        return {"message": f"Member Passbook Number is {passbook_id.association_members_id}"}
     except Exception as e:
         print(f"Here is the Exception {str(e)}")
         return {"error": str(e)}
