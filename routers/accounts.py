@@ -1099,14 +1099,21 @@ async def get_all_commodities_in_cluste_to_join_warehouser(society_id: int = For
 
     exist = db.query(models.CommodityAccountCommodities).filter(
         models.CommodityAccountCommodities.commodity_account_id == com_acc_id).first()
-
-    commodi = db.query(models.Commodities.id,
-                       models.Commodities.commodity) \
-        .select_from(models.SocietyCommodities) \
-        .join(models.Commodities, models.Commodities.id == models.SocietyCommodities.commodities_id) \
-        .filter(models.SocietyCommodities.society_id == society_id,
-                models.SocietyCommodities.commodities_id != exist.commodities_id) \
-        .all()
+    if exist:
+        commodi = db.query(models.Commodities.id,
+                           models.Commodities.commodity) \
+            .select_from(models.SocietyCommodities) \
+            .join(models.Commodities, models.Commodities.id == models.SocietyCommodities.commodities_id) \
+            .filter(models.SocietyCommodities.society_id == society_id,
+                    models.SocietyCommodities.commodities_id != exist.commodities_id) \
+            .all()
+    else:
+        commodi = db.query(models.Commodities.id,
+                           models.Commodities.commodity) \
+            .select_from(models.SocietyCommodities) \
+            .join(models.Commodities, models.Commodities.id == models.SocietyCommodities.commodities_id) \
+            .filter(models.SocietyCommodities.society_id == society_id) \
+            .all()
     return {"All_Commodities": commodi}
 
 
