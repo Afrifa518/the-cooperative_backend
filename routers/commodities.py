@@ -310,6 +310,8 @@ async def get_price_traking_table(user: dict = Depends(get_current_user),
                       models.CommodityValueTrack.grade) \
         .select_from(models.CommodityValueTrack) \
         .join(models.Commodities, models.Commodities.id == models.CommodityValueTrack.commodities_id) \
+        .join(models.SocietyCommodities, models.Commodities.id == models.SocietyCommodities.commodities_id) \
+        .filter(models.Commodities.id == models.SocietyCommodities.commodities_id) \
         .order_by(desc(models.CommodityValueTrack.id)) \
         .all()
 

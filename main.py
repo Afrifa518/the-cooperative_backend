@@ -10,7 +10,7 @@ import os
 
 app = FastAPI()
 # handler = Mangum(app)
-origin = os.getenv("ORIGIN", "*")
+origin = os.getenv("ORIGIN")
 
 app.add_middleware(
     CORSMiddleware,

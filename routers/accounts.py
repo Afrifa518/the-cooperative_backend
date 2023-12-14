@@ -175,6 +175,12 @@ async def create_society_account(account: SocietyAccounts,
     date = datetime.now()
     openDate = date.strftime("%Y-%m-%d")
 
+    fg = db.query(models.SocietyBankAccounts) \
+        .filter(models.SocietyBankAccounts.account_name == account.account_name,
+                models.SocietyBankAccounts.society_id == account.society_id) \
+        .first()
+    if fg:
+        return "Account name already exists"
     accoun_model = models.SocietyBankAccounts()
     accoun_model.society_id = account.society_id
     accoun_model.account_name = account.account_name
@@ -1083,6 +1089,50 @@ async def get_all_commodities_in_cluster(society_id: int,
     return {"All_Commodities": commodi}
 
 
+@router.post("/commodities/joiner")
+async def get_all_commodities_in_cluste_to_join_warehouser(society_id: int = Form(...),
+                                                           com_acc_id: int = Form(...),
+                                                           user: dict = Depends(get_current_user),
+                                                           db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    exist = db.query(models.CommodityAccountCommodities).filter(
+        models.CommodityAccountCommodities.commodity_account_id == com_acc_id).first()
+
+    commodi = db.query(models.Commodities.id,
+                       models.Commodities.commodity) \
+        .select_from(models.SocietyCommodities) \
+        .join(models.Commodities, models.Commodities.id == models.SocietyCommodities.commodities_id) \
+        .filter(models.SocietyCommodities.society_id == society_id,
+                models.SocietyCommodities.commodities_id != exist.commodities_id) \
+        .all()
+    return {"All_Commodities": commodi}
+
+
+@router.post("/finally/add_com")
+async def join_commodity_to_warehouse(warehouse_id: int = Form(...),
+                                      commodity_id: int = Form(...),
+                                      user: dict = Depends(get_current_user),
+                                      db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    fg = db.query(models.CommodityAccountCommodities).filter(
+        models.CommodityAccountCommodities.commodity_account_id == warehouse_id,
+        models.CommodityAccountCommodities.commodities_id == commodity_id).first()
+    if fg is None:
+        dh = models.CommodityAccountCommodities(
+            commodities_id=commodity_id,
+            commodity_account_id=warehouse_id
+        )
+        db.add(dh)
+        db.commit()
+        return "Commodity Added Successfully"
+    else:
+        return "Commodity Already Added"
+
+
 def add_commodities(commodities: Optional[List[int]] = None,
                     db: Session = Depends(get_db)):
     commodity_account = db.query(models.CommodityAccount) \
@@ -1146,53 +1196,54 @@ class StoreCommodities(BaseModel):
     empty_sack_cost_fee: bool
 
 
-@router.post("/store/commodity")
-async def store_commodity(storage: StoreCommodities,
-                          user: dict = Depends(get_current_user),
-                          db: Session = Depends(get_db)):
-    if user is None:
-        raise get_user_exception()
-
-    charges = db.query(models.CommodityAccount) \
-        .select_from(models.MemberCommodityAccount) \
-        .join(models.CommodityAccount,
-              models.CommodityAccount.id == models.MemberCommodityAccount.commodity_id) \
-        .filter(models.MemberCommodityAccount.id == storage.member_acc_id) \
-        .first()
-
-    price = db.query(models.CommodityGradeValues) \
-        .select_from(models.Commodities) \
-        .join(models.CommodityGradeValues,
-              models.Commodities.id == models.CommodityGradeValues.commodities_id) \
-        .filter(models.Commodities.id == storage.commodity_id,
-                models.CommodityGradeValues.grade == storage.grade) \
-        .first()
-    unit = db.query(models.UnitsKg) \
-        .select_from(models.UnitsKg) \
-        .filter(models.UnitsKg.id == storage.units_id) \
-        .first()
-
-    weight = unit.unit_per_kg * storage.total_number
-    tons = weight / 1000
-
-    cash_value = 0
-    # add handling fee
-
-    modell = models.MemberCommodityAccCommodities(
-        member_acc_id=storage.member_acc_id,
-        commodities_id=storage.commodity_id,
-        units_id=storage.units_id,
-        total_number=storage.total_number,
-        commodity_cash_value=cash_value,
-        weight=weight,
-        tons=tons
-    )
+#
+# @router.post("/store/commodity")
+# async def store_commodity(storage: StoreCommodities,
+#                           user: dict = Depends(get_current_user),
+#                           db: Session = Depends(get_db)):
+#     if user is None:
+#         raise get_user_exception()
+#
+#     charges = db.query(models.CommodityAccount) \
+#         .select_from(models.MemberCommodityAccount) \
+#         .join(models.CommodityAccount,
+#               models.CommodityAccount.id == models.MemberCommodityAccount.commodity_id) \
+#         .filter(models.MemberCommodityAccount.id == storage.member_acc_id) \
+#         .first()
+#
+#     price = db.query(models.CommodityGradeValues) \
+#         .select_from(models.Commodities) \
+#         .join(models.CommodityGradeValues,
+#               models.Commodities.id == models.CommodityGradeValues.commodities_id) \
+#         .filter(models.Commodities.id == storage.commodity_id,
+#                 models.CommodityGradeValues.grade == storage.grade) \
+#         .first()
+#     unit = db.query(models.UnitsKg) \
+#         .select_from(models.UnitsKg) \
+#         .filter(models.UnitsKg.id == storage.units_id) \
+#         .first()
+#
+#     weight = unit.unit_per_kg * storage.total_number
+#     tons = weight / 1000
+#
+#     cash_value = 0
+#     # add handling fee
+#
+#     modell = models.MemberCommodityAccCommodities(
+#         member_acc_id=storage.member_acc_id,
+#         commodities_id=storage.commodity_id,
+#         units_id=storage.units_id,
+#         total_number=storage.total_number,
+#         commodity_cash_value=cash_value,
+#         weight=weight,
+#         tons=tons
+#     )
 
 
 @router.get("/commodity/{society_id}/")
-async def get_commodities(society_id: int,
-                          user: dict = Depends(get_current_user),
-                          db: Session = Depends(get_db)):
+async def get_commodities_warhouse(society_id: int,
+                                   user: dict = Depends(get_current_user),
+                                   db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
 
@@ -1204,6 +1255,68 @@ async def get_commodities(society_id: int,
         .all()
 
     return {"Warehouse": warehouses}
+
+
+@router.get("/commodities/warehouse/{member_acc_id}")
+async def get_commodities(member_acc_id: int,
+                          user: dict = Depends(get_current_user),
+                          db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    account = db.query(models.MemberCommodityAccount) \
+        .filter(models.MemberCommodityAccount.id == member_acc_id) \
+        .first()
+
+    com = db.query(models.Commodities) \
+        .select_from(models.CommodityAccountCommodities) \
+        .join(models.Commodities,
+              models.Commodities.id == models.CommodityAccountCommodities.commodities_id) \
+        .filter(models.CommodityAccountCommodities.commodity_account_id == account.commodity_id) \
+        .all()
+
+    return {"Commodities": com}
+
+
+@router.get("/commodities/charges/{member_acc_id}")
+async def get_charges(member_acc_id: int,
+                      user: dict = Depends(get_current_user),
+                      db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    com = db.query(models.CommodityAccount) \
+        .select_from(models.MemberCommodityAccount) \
+        .join(models.CommodityAccount,
+              models.CommodityAccount.id == models.MemberCommodityAccount.commodity_id) \
+        .filter(models.MemberCommodityAccount.id == member_acc_id) \
+        .all()
+
+    return com
+
+
+@router.get("/grade/values/{commodity_id}")
+async def get_commodity_grade_values(commodity_id: int,
+                                     user: dict = Depends(get_current_user),
+                                     db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    grades = db.query(models.CommodityGradeValues) \
+        .filter(models.CommodityGradeValues.commodities_id == commodity_id) \
+        .all()
+
+    unit_join = db.query(models.CommodityUnitsJoin) \
+        .filter(models.CommodityUnitsJoin.commodity_id == commodity_id) \
+        .all()
+    units_kg = []
+    for item in unit_join:
+        extract = db.query(models.UnitsKg) \
+            .filter(models.UnitsKg.id == item.unit_per_kg_id) \
+            .first()
+        units_kg.append(extract)
+
+    return {"grades": grades, "units_kg": units_kg}
 
 
 @router.get("/commodityty/all")
@@ -1222,8 +1335,31 @@ async def get_all_commodities_account(user: dict = Depends(get_current_user),
     return {"Warehouse": warehouse}
 
 
-@router.get("/commodity/account/info/{society_id}")
-async def get_warehouse_infomation(society_id: int,
+@router.get("/commodityty/all/{association_memeber_id}")
+async def get_all_commodities_account_in_soc(association_memeber_id: int,
+                                             user: dict = Depends(get_current_user),
+                                             db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    warehouse = db.query(models.CommodityAccount.warehouse,
+                         models.CommodityAccount.id,
+                         models.CommodityAccount.community,
+                         models.CommodityAccount.society_id) \
+        .select_from(models.AssociationMembers) \
+        .join(models.Association, models.Association.association_id == models.AssociationMembers.association_id) \
+        .join(models.AssociationType,
+              models.Association.association_type_id == models.AssociationType.associationtype_id) \
+        .join(models.Society, models.Society.id == models.AssociationType.society_id) \
+        .join(models.CommodityAccount, models.CommodityAccount.society_id == models.Society.id) \
+        .filter(models.AssociationMembers.association_members_id == association_memeber_id) \
+        .all()
+
+    return {"Warehouse": warehouse}
+
+
+@router.get("/commodity/account/info/{warehouse_id}")
+async def get_warehouse_infomation(warehouse_id: int,
                                    user: dict = Depends(get_current_user),
                                    db: Session = Depends(get_db)):
     if user is None:
@@ -1242,7 +1378,7 @@ async def get_warehouse_infomation(society_id: int,
                           models.CommodityAccount.community,
                           ) \
         .select_from(models.CommodityAccount) \
-        .filter(models.CommodityAccount.id == society_id) \
+        .filter(models.CommodityAccount.id == warehouse_id) \
         .first()
 
     related_commodities = db.query(models.Commodities) \
@@ -1251,7 +1387,7 @@ async def get_warehouse_infomation(society_id: int,
               models.CommodityAccountCommodities.commodity_account_id == models.CommodityAccount.id) \
         .join(models.Commodities,
               models.CommodityAccountCommodities.commodities_id == models.Commodities.id) \
-        .filter(models.CommodityAccount.society_id == society_id) \
+        .filter(models.CommodityAccount.id == warehouse_id) \
         .all()
     # print({"Basic_Info": basic_info, "Related Commodities": related_commodities})
 
@@ -1753,6 +1889,8 @@ async def process_storage(commodity_id: int = Form(...),
         price_per_bg = price_per_bg - charges.empty_sack_cost_fee
     else:
         price_per_bg = price_per_bg
+    # Tax
+    price_per_bg = price_per_bg - charges.tax_fee
 
     total_price_value = price_per_bg * amount_storing
 
@@ -1760,7 +1898,7 @@ async def process_storage(commodity_id: int = Form(...),
         "Commodity": commodity.commodity,
         "Grade": details.grade,
         "Current_commodity_price": details.price_per_kg,
-        "Unit/kg": unit.unit_per_kg,
+        "Unit_kg": unit.unit_per_kg,
         "Amount_storing": amount_storing,
         "Weight": weight,
         "Tons": tons,
@@ -1770,6 +1908,242 @@ async def process_storage(commodity_id: int = Form(...),
     }
 
 
+@router.post("/store/commodity/original")
+async def store_commodity(transaction_date: str = Form(...),
+                          commodity_acc_id: int = Form(...),
+                          number_of_commodities: int = Form(...),
+                          commodities_id: int = Form(...),
+                          cash_value: float = Form(...),
+                          transaction_type_id: int = Form(...),
+                          grade_id: int = Form(...),
+                          units_id: int = Form(...),
+                          weigth: int = Form(...),
+                          tons: str = Form(...),
+                          user: dict = Depends(get_current_user),
+                          db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    # get memeber account
+    member_account = db.query(models.MemberCommodityAccount) \
+        .filter(models.MemberCommodityAccount.id == commodity_acc_id) \
+        .first()
+
+    # save activity as transaction
+    if transaction_type_id == 1:
+        dbos = models.CommodityTransactions(
+            prep_by=user.get("id"),
+            narration="",
+            transaction_date=transaction_date,
+            commodity_acc_id=commodity_acc_id,
+            amount_of_commodity=number_of_commodities,
+            commodities_id=commodities_id,
+            cash_value=cash_value,
+            transaction_type_id=transaction_type_id,
+            grade_id=grade_id,
+            units_id=units_id,
+            total_cash_balance=member_account.cash_value + cash_value if member_account.cash_value else cash_value
+        )
+        member_account.cash_value += cash_value
+        db.add(dbos)
+        db.commit()
+    elif transaction_type_id == 2:
+        dbos = models.CommodityTransactions(
+            prep_by=user.get("id"),
+            narration="",
+            transaction_date=transaction_date,
+            commodity_acc_id=commodity_acc_id,
+            amount_of_commodity=number_of_commodities,
+            commodities_id=commodities_id,
+            cash_value=cash_value,
+            transaction_type_id=transaction_type_id,
+            grade_id=grade_id,
+            units_id=units_id,
+            total_cash_balance=member_account.cash_value - cash_value if member_account.cash_value else -cash_value
+        )
+        member_account.cash_value -= cash_value
+        db.add(dbos)
+        db.commit()
+
+    # get commodities of the account
+    already = db.query(models.MemberCommodityAccCommodities).filter(
+        models.MemberCommodityAccCommodities.commodities_id == commodities_id,
+        models.MemberCommodityAccCommodities.member_acc_id == commodity_acc_id).first()
+
+    # get units
+    real_units = db.query(models.UnitsKg).filter(models.UnitsKg.id == units_id).first()
+    # get grades
+    real_grades = db.query(models.CommodityGradeValues).filter(models.CommodityGradeValues.id == grade_id).first()
+    # save or modify account's commodity
+    if already:
+        already.total_number += number_of_commodities
+        already.commodity_cash_value += cash_value
+        already.weight += weigth
+        already.tons = f"{already.tons}, {tons}"
+        already.units_id = f"{already.units_id}, {real_units.unit_per_kg}" if already.units_id != real_units.unit_per_kg else f"{already.units_id}"
+        already.grades = f"{already.grades}, {real_grades.grade}" if already.grades != real_grades.grade else f"{already.grades}"
+
+        db.commit()
+
+        return "Commodity Stored Successfully"
+    else:
+        store_com_to_house = models.MemberCommodityAccCommodities(
+            member_acc_id=commodity_acc_id,
+            commodities_id=commodities_id,
+            units_id=f"{real_units.unit_per_kg}",
+            total_number=number_of_commodities,
+            commodity_cash_value=cash_value,
+            weight=weigth,
+            tons=tons,
+            grades=f"{real_grades.grade}",
+        )
+        db.add(store_com_to_house)
+        db.commit()
+
+        return "Commodity Stored Successfully"
 
 
+@router.get("/com/transaction/details/{member_commodity_account_id}")
+async def get_transaction_details(member_commodity_account_id: int,
+                                  user: dict = Depends(get_current_user),
+                                  db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
 
+    commodities = []
+    raw_commodities = db.query(models.Commodities,
+                               models.MemberCommodityAccCommodities) \
+        .select_from(models.MemberCommodityAccCommodities) \
+        .join(models.Commodities, models.Commodities.id == models.MemberCommodityAccCommodities.commodities_id) \
+        .filter(models.MemberCommodityAccCommodities.member_acc_id == member_commodity_account_id) \
+        .all()
+
+    for item in raw_commodities:
+        data = {
+            "id": item.Commodities.id,
+            "commodity": item.Commodities.commodity,
+            "units": item.MemberCommodityAccCommodities.units_id,
+            "total_number": item.MemberCommodityAccCommodities.total_number,
+            "commodity_cash_value": item.MemberCommodityAccCommodities.commodity_cash_value,
+            "total_weight": item.MemberCommodityAccCommodities.weight,
+            "tonnes": item.MemberCommodityAccCommodities.tons,
+            "grade": item.MemberCommodityAccCommodities.grades
+        }
+        commodities.append(data)
+
+    return {"Commodities": commodities}
+
+
+@router.get("/current/prices/{commodity_id}")
+async def get_all_commodity_prices(commodity_id: int,
+                                   user: dict = Depends(get_current_user),
+                                   db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    price = db.query(models.CommodityGradeValues) \
+        .filter(models.CommodityGradeValues.commodities_id == commodity_id) \
+        .all()
+    return {"price": price}
+
+
+@router.post("/my/activities/commodity")
+async def my_activities_commodity(member_com_acc_id: int = Form(...),
+                                  commodity_id: int = Form(...),
+                                  start_date: Optional[str] = Form(None),
+                                  end_date: Optional[str] = Form(None),
+                                  user: dict = Depends(get_current_user),
+                                  db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    total_cash_value = 0
+    total_bags = 0
+    total_balance = 0
+
+    if start_date and end_date:
+        acts = db.query(models.CommodityTransactions.transaction_id,
+                        models.Users.username,
+                        models.CommodityTransactions.transaction_date,
+                        models.CommodityTransactions.amount_of_commodity,
+                        models.CommodityTransactions.commodities_id,
+                        models.Commodities.commodity,
+                        models.CommodityTransactions.cash_value,
+                        models.CommodityTransactions.transaction_type_id,
+                        models.CommodityGradeValues.grade,
+                        models.UnitsKg.unit_per_kg,
+                        models.CommodityTransactions.total_cash_balance) \
+            .select_from(models.CommodityTransactions) \
+            .join(models.Users, models.Users.id == models.CommodityTransactions.prep_by) \
+            .join(models.CommodityGradeValues, models.CommodityGradeValues.id == models.CommodityTransactions.grade_id) \
+            .join(models.UnitsKg, models.UnitsKg.id == models.CommodityTransactions.units_id) \
+            .join(models.Commodities, models.Commodities.id == models.CommodityTransactions.commodities_id) \
+            .filter(models.CommodityTransactions.commodity_acc_id == member_com_acc_id,
+                    models.CommodityTransactions.commodities_id == commodity_id,
+                    func.date(models.CommodityTransactions.transaction_date).between(start_date, end_date)) \
+            .all()
+        for item in acts:
+            total_cash_value += item.cash_value if item.transaction_type_id == 1 else -item.cash_value
+            total_bags += item.amount_of_commodity if item.transaction_type_id == 1 else -item.amount_of_commodity
+            total_balance += item.total_cash_balance if item.transaction_type_id == 1 else -item.total_cash_balance
+    else:
+        acts = db.query(models.CommodityTransactions.transaction_id,
+                        models.Users.username,
+                        models.CommodityTransactions.transaction_date,
+                        models.CommodityTransactions.amount_of_commodity,
+                        models.CommodityTransactions.commodities_id,
+                        models.Commodities.commodity,
+                        models.CommodityTransactions.cash_value,
+                        models.CommodityTransactions.transaction_type_id,
+                        models.CommodityGradeValues.grade,
+                        models.UnitsKg.unit_per_kg,
+                        models.CommodityTransactions.total_cash_balance) \
+            .select_from(models.CommodityTransactions) \
+            .join(models.Users, models.Users.id == models.CommodityTransactions.prep_by) \
+            .join(models.CommodityGradeValues, models.CommodityGradeValues.id == models.CommodityTransactions.grade_id) \
+            .join(models.UnitsKg, models.UnitsKg.id == models.CommodityTransactions.units_id) \
+            .join(models.Commodities, models.Commodities.id == models.CommodityTransactions.commodities_id) \
+            .filter(models.CommodityTransactions.commodity_acc_id == member_com_acc_id,
+                    models.CommodityTransactions.commodities_id == commodity_id) \
+            .all()
+        for item in acts:
+            total_cash_value += item.cash_value if item.transaction_type_id == 1 else -item.cash_value
+            total_bags += item.amount_of_commodity if item.transaction_type_id == 1 else -item.amount_of_commodity
+            total_balance += item.total_cash_balance if item.transaction_type_id == 1 else -item.total_cash_balance
+
+    return {
+        "activities": acts,
+        "total_cash_value": total_cash_value,
+        "total_bags": total_bags,
+        "total_balance": total_balance
+    }
+
+
+@router.delete("/movetotrash/{transaction_id}")
+async def move_activity_to_trash(transaction_id: int,
+                                 user: dict = Depends(get_current_user),
+                                 db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    before = db.query(models.CommodityTransactions).filter(
+        models.CommodityTransactions.transaction_id == transaction_id).first()
+    now = models.ActivityTrash(
+        transaction_id=before.transaction_id,
+        prep_by=before.prep_by,
+        narration=before.narration,
+        transaction_date=before.transaction_date,
+        commodity_acc_id=before.commodity_acc_id,
+        amount_of_commodity=before.amount_of_commodity,
+        commodities_id=before.commodities_id,
+        cash_value=before.cash_value,
+        transaction_type_id=before.transaction_type_id,
+        grade_id=before.grade_id,
+        units_id=before.units_id,
+        total_cash_balance=before.total_cash_balance
+    )
+    db.add(now)
+    db.commit()
+    after = db.query(models.CommodityTransactions).filter(
+        models.CommodityTransactions.transaction_id == transaction_id).delete()
+    db.commit()
+
+    return "Activity deleted successfully"

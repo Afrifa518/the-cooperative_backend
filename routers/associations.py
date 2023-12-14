@@ -864,7 +864,7 @@ async def get_association_passbook_info_yeah(association_id: int,
         cash_shares_bal += item.cash_shares_bal
         withdrawal_value += item.withdrawal_value
         transfers_value += item.transfers_value
-        loan_disbursed += item.loan_disbursed
+        loan_disbursed += item.loan_disbursed if item.loan_disbursed else loan_disbursed
     boom.append({
         "cash_savings_bal": cash_savings_bal,
         "cash_loans_bal": cash_loans_bal,
@@ -886,7 +886,8 @@ async def get_association_passbook_info_yeah(association_id: int,
         data["id"] = todayy.id
         data["Starting_Savings"] = yesterday["cash_savings_bal"] if yestaday else 0
         data["Current_Savings"] = todayy.cash_savings_bal
-        data["Addition_Subtraction_in_Savings"] = todayy.cash_savings_bal + yesterday["cash_savings_bal"] if yestaday else 0
+        data["Addition_Subtraction_in_Savings"] = todayy.cash_savings_bal + yesterday[
+            "cash_savings_bal"] if yestaday else 0
 
     if todayy is None:
         data["Starting_Loans"] = yesterday["cash_loans_bal"] if yestaday else 0
@@ -910,7 +911,8 @@ async def get_association_passbook_info_yeah(association_id: int,
     else:
         data["Starting_Shares"] = yesterday["cash_shares_bal"] if yestaday else 0
         data["Current_Shares"] = todayy.cash_shares_bal
-        data["Addition_Subtraction_in_Shares"] = todayy.cash_shares_bal + yesterday["cash_shares_bal"] if yestaday else 0
+        data["Addition_Subtraction_in_Shares"] = todayy.cash_shares_bal + yesterday[
+            "cash_shares_bal"] if yestaday else 0
 
     if todayy is None:
         data["Starting_Withdraws"] = yesterday["withdrawal_value"] if yestaday else 0
@@ -919,7 +921,8 @@ async def get_association_passbook_info_yeah(association_id: int,
     else:
         data["Starting_Withdraws"] = yesterday["withdrawal_value"] if yestaday else 0
         data["Current_Withdraws"] = todayy.withdrawal_value
-        data["Addition_Subtraction_in_Withdraws"] = todayy.withdrawal_value + yesterday["withdrawal_value"] if yestaday else 0
+        data["Addition_Subtraction_in_Withdraws"] = todayy.withdrawal_value + yesterday[
+            "withdrawal_value"] if yestaday else 0
 
     if todayy is None:
         data["Starting_Transfers"] = yesterday["transfers_value"] if yestaday else 0
@@ -928,7 +931,8 @@ async def get_association_passbook_info_yeah(association_id: int,
     else:
         data["Starting_Transfers"] = yesterday["transfers_value"] if yestaday else 0
         data["Current_Transfers"] = todayy.transfers_value
-        data["Addition_Subtraction_in_Transfers"] = todayy.transfers_value + yesterday["transfers_value"] if yestaday else 0
+        data["Addition_Subtraction_in_Transfers"] = todayy.transfers_value + yesterday[
+            "transfers_value"] if yestaday else 0
 
     tra.append(data)
     return tra
@@ -2450,7 +2454,6 @@ async def get_all_transactions_combined_today(association_id: int,
     for item in all_one:
         total_dep += item.amount if item.transactiontype_name == "Deposit" else 0
 
-
     # all_them = [todays_savings_accounts_transactions, todays_share_accounts_transactions,
     #             todays_loan_accounts_transactions]
     return {
@@ -2831,3 +2834,12 @@ async def get_all_associations_id_for_mass_deposit(user: dict = Depends(get_curr
               models.AssociationType.associationtype_id == models.Association.association_type_id) \
         .all()
     return {"All_Associations": all_associations}
+
+
+@router.get("/out/")
+async def check_for_login(user: dict = Depends(get_current_user),
+                          db: Session = Depends(get_db)):
+    if user is None:
+        return "logout"
+    else:
+        return "login"

@@ -258,7 +258,6 @@ class UnitsKg(Base):
     unit_per_kg = Column("units/kg", Integer)
 
     trillion_per_unit = relationship("CommodityUnitsJoin", back_populates="unit_per_trillion")
-    tinu = relationship("MemberCommodityAccCommodities", back_populates="unit")
     commodity_units = relationship("CommodityTransactions", back_populates="unit_values")
 
 
@@ -401,15 +400,15 @@ class MemberCommodityAccCommodities(Base):
     member_commodity_acc_commodities_id = Column(Integer, primary_key=True, index=True)
     member_acc_id = Column(Integer, ForeignKey("member_commodity_acc.id"))
     commodities_id = Column(Integer, ForeignKey("commodities.id"))
-    units_id = Column(Integer, ForeignKey("units/kg.id"))
+    units_id = Column(String)
     total_number = Column(Integer)
     commodity_cash_value = Column(Float)
-    wieght = Column(Integer)
-    tons = Column(Integer)
+    weight = Column(Integer)
+    tons = Column(String)
+    grades = Column(String)
 
     acc_things = relationship("MemberCommodityAccount", back_populates="things_acc")
     com_ankasa = relationship("Commodities", back_populates="ankasa_com")
-    unit = relationship("UnitsKg", back_populates="tinu")
 
 
 class AssociationType(Base):
@@ -730,3 +729,19 @@ class CommodityTransactions(Base):
     account_nso = relationship("MemberCommodityAccount", back_populates="nso_account")
     grade_values = relationship("CommodityGradeValues", back_populates="commodity_grades")
     unit_values = relationship("UnitsKg", back_populates="commodity_units")
+
+class ActivityTrash(Base):
+    __tablename__ = "activity_trash"
+
+    transaction_id = Column(Integer, primary_key=True, index=True)
+    prep_by = Column(Integer)
+    narration = Column(String)
+    transaction_date = Column(DateTime)
+    commodity_acc_id = Column(Integer)
+    amount_of_commodity = Column(Integer)
+    commodities_id = Column(Integer)
+    cash_value = Column(Float)
+    transaction_type_id = Column(Integer)
+    grade_id = Column(Integer)
+    units_id = Column(Integer)
+    total_cash_balance = Column(Float)
