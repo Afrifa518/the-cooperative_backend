@@ -228,10 +228,25 @@ async def get_association_id(psb_id: int,
                              db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
+
+    details = db.query(models.Association.association_name,
+                       models.AssociationType.association_type,
+                       models.Society.society) \
+        .select_from(models.AssociationMembers) \
+        .join(models.Association, models.Association.association_id == models.AssociationMembers.association_id) \
+        .join(models.AssociationType,
+              models.AssociationType.associationtype_id == models.Association.association_type_id) \
+        .join(models.Society, models.Society.id == models.AssociationType.society_id) \
+        .filter(models.AssociationMembers.association_members_id == psb_id) \
+        .first()
+
     dd = db.query(models.AssociationMembers).filter(
         models.AssociationMembers.association_members_id == psb_id
     ).first()
-    return dd.association_id
+    return {
+        "dd": dd.association_id,
+        "details": details
+    }
 
 
 @router.get("/{association_id}")

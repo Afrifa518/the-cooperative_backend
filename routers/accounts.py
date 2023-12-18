@@ -1,3 +1,4 @@
+import base64
 import sys
 
 from sqlalchemy import desc, func
@@ -1256,7 +1257,8 @@ async def get_commodities_warhouse(society_id: int,
 
     warehouses = db.query(models.CommodityAccount.warehouse,
                           models.CommodityAccount.id,
-                          models.CommodityAccount.society_id) \
+                          models.CommodityAccount.society_id,
+                          models.CommodityAccount.community) \
         .select_from(models.CommodityAccount) \
         .filter(models.CommodityAccount.society_id == society_id) \
         .all()
@@ -1396,9 +1398,135 @@ async def get_warehouse_infomation(warehouse_id: int,
               models.CommodityAccountCommodities.commodities_id == models.Commodities.id) \
         .filter(models.CommodityAccount.id == warehouse_id) \
         .all()
-    # print({"Basic_Info": basic_info, "Related Commodities": related_commodities})
 
-    return {"Basic_Info": basic_info, "Related_Commodities": related_commodities}
+    members = db.query(models.Members.member_id,
+                       models.Members.memberImage,
+                       models.Members.firstname,
+                       models.Members.lastname,
+                       models.Members.middlename,
+                       models.Members.phone,
+                       models.Members.address,
+                       models.MemberCommodityAccount.cash_value,
+                       models.MemberCommodityAccount.id,
+                       models.AssociationMembers.passbook_id,
+                       models.Association.association_name,
+                       models.AssociationType.association_type) \
+        .select_from(models.MemberCommodityAccount) \
+        .join(models.Members, models.Members.member_id == models.MemberCommodityAccount.member_id) \
+        .join(models.AssociationMembers,
+              models.AssociationMembers.association_members_id == models.MemberCommodityAccount.association_member_id) \
+        .join(models.Association, models.Association.association_id == models.AssociationMembers.association_id) \
+        .join(models.AssociationType,
+              models.Association.association_type_id == models.AssociationType.associationtype_id) \
+        .filter(models.MemberCommodityAccount.commodity_id == warehouse_id) \
+        .all()
+
+    all_members = []
+
+    for item in members:
+        pic = item.memberImage if item.memberImage else None
+        image = base64.b64encode(pic).decode("utf-8") if pic else None
+
+        com = db.query(models.MemberCommodityAccCommodities) \
+            .filter(models.MemberCommodityAccCommodities.member_acc_id == item.id) \
+            .all()
+        commodities = []
+        for ided in com:
+            com_original = db.query(models.Commodities) \
+                .filter(models.Commodities.id == ided.commodities_id) \
+                .first()
+            commodities.append({
+                "commodity_id": com_original.id,
+                "commodity": com_original.commodity,
+            })
+
+        all_members.append({
+            "member_id": item.member_id,
+            "name": f"{item.firstname} {item.lastname}",
+            "phone": item.phone,
+            "address": item.address,
+            "cash_value": item.cash_value,
+            "passbook_id": item.passbook_id,
+            "association_name": item.association_name,
+            "association_type": item.association_type,
+            "image": image,
+            "commodities": commodities
+        })
+
+    return {
+        "Basic_Info": basic_info,
+        "Related_Commodities": related_commodities,
+        "all_members": all_members
+    }
+
+
+@router.post("/search/specific/member/ok")
+async def search_specific_member(account_id: int = Form(...),
+                                 search_member: str = Form(...),
+                                 user: dict = Depends(get_current_user),
+                                 db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    members = db.query(models.Members.member_id,
+                       models.Members.memberImage,
+                       models.Members.firstname,
+                       models.Members.lastname,
+                       models.Members.middlename,
+                       models.Members.phone,
+                       models.Members.address,
+                       models.MemberCommodityAccount.cash_value,
+                       models.MemberCommodityAccount.id,
+                       models.AssociationMembers.passbook_id,
+                       models.Association.association_name,
+                       models.AssociationType.association_type) \
+        .select_from(models.MemberCommodityAccount) \
+        .join(models.Members, models.Members.member_id == models.MemberCommodityAccount.member_id) \
+        .join(models.AssociationMembers,
+              models.AssociationMembers.association_members_id == models.MemberCommodityAccount.association_member_id) \
+        .join(models.Association, models.Association.association_id == models.AssociationMembers.association_id) \
+        .join(models.AssociationType,
+              models.Association.association_type_id == models.AssociationType.associationtype_id) \
+        .filter(models.MemberCommodityAccount.commodity_id == account_id,
+                models.Members.firstname.ilike(f"%{search_member}%")) \
+        .all()
+
+    all_members = []
+
+    for item in members:
+        pic = item.memberImage if item.memberImage else None
+        image = base64.b64encode(pic).decode("utf-8") if pic else None
+
+        com = db.query(models.MemberCommodityAccCommodities) \
+            .filter(models.MemberCommodityAccCommodities.member_acc_id == item.id) \
+            .all()
+        commodities = []
+        for ided in com:
+            com_original = db.query(models.Commodities) \
+                .filter(models.Commodities.id == ided.commodities_id) \
+                .first()
+            commodities.append({
+                "commodity_id": com_original.id,
+                "commodity": com_original.commodity,
+            })
+
+        all_members.append({
+            "member_id": item.member_id,
+            "name": f"{item.firstname} {item.lastname}",
+            "phone": item.phone,
+            "address": item.address,
+            "cash_value": item.cash_value,
+            "passbook_id": item.passbook_id,
+            "association_name": item.association_name,
+            "association_type": item.association_type,
+            "image": image,
+            "commodities": commodities
+        })
+
+
+    return {
+        "all_members": all_members
+    }
 
 
 @router.get("/account/{member_id}")
@@ -1911,7 +2039,8 @@ async def process_storage(commodity_id: int = Form(...),
         "Tons": tons,
         "Price_per_bag": original_price_per_bg,
         "charged_price_per_bg": price_per_bg,
-        "total_cash_value": total_price_value
+        "total_cash_value": total_price_value,
+
     }
 
 
@@ -1924,8 +2053,14 @@ async def store_commodity(transaction_date: str = Form(...),
                           transaction_type_id: int = Form(...),
                           grade_id: int = Form(...),
                           units_id: int = Form(...),
-                          weigth: int = Form(...),
+                          weight: int = Form(...),
                           tons: str = Form(...),
+                          rebag: bool = Form(...),
+                          stack: bool = Form(...),
+                          clean: bool = Form(...),
+                          destone: bool = Form(...),
+                          stitch: bool = Form(...),
+                          empty_sack: bool = Form(...),
                           user: dict = Depends(get_current_user),
                           db: Session = Depends(get_db)):
     if user is None:
@@ -1948,7 +2083,17 @@ async def store_commodity(transaction_date: str = Form(...),
             transaction_type_id=transaction_type_id,
             grade_id=grade_id,
             units_id=units_id,
-            total_cash_balance=member_account.cash_value + cash_value if member_account.cash_value else cash_value
+            total_cash_balance=member_account.cash_value + cash_value if member_account.cash_value else cash_value,
+            rebagging_fee=rebag,
+            stacking_fee=stack,
+            destoning_fee=destone,
+            cleaning_fee=clean,
+            storage_fee=True,
+            tax_fee=True,
+            stitching_fee=stitch,
+            loading_fee=True,
+            empty_sack_cost_fee=empty_sack,
+            retriv_bags=number_of_commodities
         )
         member_account.cash_value += cash_value
         db.add(dbos)
@@ -1965,7 +2110,16 @@ async def store_commodity(transaction_date: str = Form(...),
             transaction_type_id=transaction_type_id,
             grade_id=grade_id,
             units_id=units_id,
-            total_cash_balance=member_account.cash_value - cash_value if member_account.cash_value else -cash_value
+            total_cash_balance=member_account.cash_value - cash_value if member_account.cash_value else -cash_value,
+            rebagging_fee=rebag,
+            stacking_fee=stack,
+            destoning_fee=destone,
+            cleaning_fee=clean,
+            storage_fee=True,
+            tax_fee=True,
+            stitching_fee=stitch,
+            loading_fee=True,
+            empty_sack_cost_fee=empty_sack,
         )
         member_account.cash_value -= cash_value
         db.add(dbos)
@@ -1984,10 +2138,10 @@ async def store_commodity(transaction_date: str = Form(...),
     if already:
         already.total_number += number_of_commodities
         already.commodity_cash_value += cash_value
-        already.weight += weigth
-        already.tons = f"{already.tons}, {tons}"
-        already.units_id = f"{already.units_id}, {real_units.unit_per_kg}" if already.units_id != real_units.unit_per_kg else f"{already.units_id}"
-        already.grades = f"{already.grades}, {real_grades.grade}" if already.grades != real_grades.grade else f"{already.grades}"
+        already.weight += weight
+        already.tons = f"{already.tons}, {tons}" if tons not in already.tons else f"{already.tons}"
+        already.units_id = f"{already.units_id}, {real_units.unit_per_kg}kg" if f"{real_units.unit_per_kg}kg" not in f"{already.units_id}" else f"{already.units_id}"
+        already.grades = f"{already.grades}, {real_grades.grade}" if real_grades.grade not in already.grades else f"{already.grades}"
 
         db.commit()
 
@@ -1996,10 +2150,10 @@ async def store_commodity(transaction_date: str = Form(...),
         store_com_to_house = models.MemberCommodityAccCommodities(
             member_acc_id=commodity_acc_id,
             commodities_id=commodities_id,
-            units_id=f"{real_units.unit_per_kg}",
+            units_id=f"{real_units.unit_per_kg}kg",
             total_number=number_of_commodities,
             commodity_cash_value=cash_value,
-            weight=weigth,
+            weight=weight,
             tons=tons,
             grades=f"{real_grades.grade}",
         )
@@ -2007,6 +2161,325 @@ async def store_commodity(transaction_date: str = Form(...),
         db.commit()
 
         return "Commodity Stored Successfully"
+
+
+@router.post("/grade/retrieval")
+async def get_details_for_retrieval_of_commodity(member_acc_id: int = Form(...),
+                                                 commodity_id: int = Form(...),
+                                                 user: dict = Depends(get_current_user),
+                                                 db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    trs = db.query(models.CommodityTransactions) \
+        .filter(models.CommodityTransactions.commodity_acc_id == member_acc_id,
+                models.CommodityTransactions.commodities_id == commodity_id) \
+        .all()
+
+    ghg = db.query(models.MemberCommodityAccCommodities) \
+        .filter(models.MemberCommodityAccCommodities.commodities_id == commodity_id,
+                models.MemberCommodityAccCommodities.member_acc_id == member_acc_id) \
+        .first()
+
+    for item in trs:
+        dg = db.query(models.CommodityGradeValues) \
+            .filter(models.CommodityGradeValues.id == item.grade_id) \
+            .all()
+        uni = db.query(models.UnitsKg) \
+            .filter(models.UnitsKg.id == item.units_id) \
+            .all()
+    return {
+        "units_kg": uni,
+        "grades": dg,
+        "number": ghg.total_number,
+    }
+
+
+@router.post("/get/specific/acts")
+async def get_specific_activities_for_retrival(member_acc_id: int = Form(...),
+                                               commodity_id: int = Form(...),
+                                               user: dict = Depends(get_current_user),
+                                               db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    final = []
+    trs = db.query(models.CommodityTransactions) \
+        .filter(models.CommodityTransactions.commodity_acc_id == member_acc_id,
+                models.CommodityTransactions.commodities_id == commodity_id,
+                models.CommodityTransactions.transaction_type_id == 1,
+                models.CommodityTransactions.retriv_bags > 0) \
+        .all()
+
+    for item in trs:
+        dg = db.query(models.CommodityGradeValues) \
+            .filter(models.CommodityGradeValues.id == item.grade_id) \
+            .first()
+        uni = db.query(models.UnitsKg) \
+            .filter(models.UnitsKg.id == item.units_id) \
+            .first()
+        final.append({
+            "id": item.transaction_id,
+            "date": item.transaction_date,
+            "bags": item.amount_of_commodity,
+            "cash_worth": item.cash_value,
+            "grade": dg.grade,
+            "unit": uni.unit_per_kg,
+            "bags_left": item.retriv_bags
+        })
+
+    return {
+        "transactions": final
+    }
+
+
+@router.post("/retrive/commodities/process/done")
+async def retrive_commodity_process_done(commodity_id: int = Form(...),
+                                         transaction_id: int = Form(...),
+                                         amount_retrieving: int = Form(...),
+                                         member_com_acc: int = Form(...),
+                                         date: str = Form(...),
+                                         user: dict = Depends(get_current_user),
+                                         db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    retrieving_from = db.query(models.CommodityTransactions).filter(
+        models.CommodityTransactions.transaction_id == transaction_id).first()
+
+    reciept = await process_storage(
+        commodity_id=commodity_id,
+        grade_id=retrieving_from.grade_id,
+        unit_id=retrieving_from.units_id,
+        amount_storing=amount_retrieving,
+        member_com_acc=member_com_acc,
+        rebag=retrieving_from.rebagging_fee,
+        stack=retrieving_from.stacking_fee,
+        clean=retrieving_from.cleaning_fee,
+        destone=retrieving_from.destoning_fee,
+        store=retrieving_from.storage_fee,
+        stitch=retrieving_from.stitching_fee,
+        load=retrieving_from.loading_fee,
+        empty_sack=retrieving_from.empty_sack_cost_fee,
+        user=user,
+        db=db
+    )
+
+    return reciept
+
+
+@router.post("/retrieve/commodity/original")
+async def retrive_commodity_process_done_original(commodity_id: int = Form(...),
+                                                  transaction_id: int = Form(...),
+                                                  amount_retrieving: int = Form(...),
+                                                  member_com_acc: int = Form(...),
+                                                  cash_value: float = Form(...),
+                                                  weight: int = Form(...),
+                                                  tons: str = Form(...),
+                                                  date: str = Form(...),
+                                                  user: dict = Depends(get_current_user),
+                                                  db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    member_account = db.query(models.MemberCommodityAccount) \
+        .filter(models.MemberCommodityAccount.id == member_com_acc) \
+        .first()
+
+    act_from = db.query(models.CommodityTransactions) \
+        .filter(models.CommodityTransactions.transaction_id == transaction_id) \
+        .first()
+    act_from.retriv_bags = act_from.retriv_bags - amount_retrieving
+    db.commit()
+
+    set_act = models.CommodityTransactions(
+        prep_by=user.get("id"),
+        narration="",
+        transaction_date=date,
+        commodity_acc_id=member_com_acc,
+        amount_of_commodity=amount_retrieving,
+        commodities_id=commodity_id,
+        cash_value=cash_value,
+        transaction_type_id=2,
+        grade_id=act_from.grade_id,
+        units_id=act_from.units_id,
+        total_cash_balance=member_account.cash_value - cash_value if member_account.cash_value else -cash_value,
+        rebagging_fee=act_from.rebagging_fee,
+        stacking_fee=act_from.stacking_fee,
+        destoning_fee=act_from.destoning_fee,
+        cleaning_fee=act_from.cleaning_fee,
+        storage_fee=True,
+        tax_fee=True,
+        stitching_fee=act_from.stitching_fee,
+        loading_fee=True,
+        empty_sack_cost_fee=act_from.empty_sack_cost_fee,
+        retriv_bags=0
+    )
+    member_account.cash_value -= cash_value
+    db.add(set_act)
+    db.commit()
+
+    now_act = db.query(models.CommodityTransactions) \
+        .filter(models.CommodityTransactions.transaction_id == transaction_id) \
+        .first()
+
+    already = db.query(models.MemberCommodityAccCommodities).filter(
+        models.MemberCommodityAccCommodities.commodities_id == commodity_id,
+        models.MemberCommodityAccCommodities.member_acc_id == member_com_acc).first()
+
+    # get units
+    real_units = db.query(models.UnitsKg).filter(models.UnitsKg.id == now_act.units_id).first()
+
+    # get grades
+    real_grades = db.query(models.CommodityGradeValues).filter(
+        models.CommodityGradeValues.id == now_act.grade_id).first()
+
+    other_act = db.query(models.CommodityTransactions) \
+        .filter(models.CommodityTransactions.transaction_id != act_from.transaction_id,
+                models.CommodityTransactions.commodity_acc_id == member_com_acc,
+                models.CommodityTransactions.commodities_id == commodity_id) \
+        .all()
+    uni_num = 0
+    grade_num = 0
+    for item in other_act:
+        other_grades = db.query(models.CommodityGradeValues).filter(
+            models.CommodityGradeValues.id == item.grade_id).first()
+        other_units = db.query(models.UnitsKg).filter(models.UnitsKg.id == item.units_id).first()
+
+        if other_units.unit_per_kg == real_units.unit_per_kg:
+            uni_num += 1
+        else:
+            pass
+        if other_grades.grade == real_grades.grade:
+            grade_num += 1
+        else:
+            pass
+
+    # print(uni_num, grade_num)
+    already.total_number -= amount_retrieving
+    already.commodity_cash_value -= cash_value
+    already.weight -= weight
+    if now_act.retriv_bags == 0 or now_act.retriv_bags == amount_retrieving:
+        if uni_num == 0:
+            already.units_id = already.units_id.replace(real_units.unit_per_kg, "")
+            already.units_id = already.units_id.strip(',')
+        if grade_num == 0:
+            already.grades = ",".join(filter(lambda x: x.strip() != real_grades.grade, already.grades.split(',')))
+    db.commit()
+
+    return "Commodity Retrieved Successfully"
+
+
+# @router.post("/update/activity")
+# async def update_activity(transaction_id: int = Form(...),
+#                           transaction_date: str = Form(...),
+#                           grade_id: int = Form(...),
+#                           unit_id: int = Form(...),
+#                           amount_storing: int = Form(...),
+#                           rebag: bool = Form(...),
+#                           stack: bool = Form(...),
+#                           clean: bool = Form(...),
+#                           destone: bool = Form(...),
+#                           store: bool = Form(...),
+#                           stitch: bool = Form(...),
+#                           load: bool = Form(...),
+#                           empty_sack: bool = Form(...),
+#                           user: dict = Depends(get_current_user),
+#                           db: Session = Depends(get_db)):
+#     if user is None:
+#         raise get_user_exception()
+#
+#     old_trs = db.query(models.CommodityTransactions) \
+#         .filter(models.CommodityTransactions.transaction_id == transaction_id) \
+#         .first()
+#     member_accounts = db.query(models.MemberCommodityAccount) \
+#         .filter(models.MemberCommodityAccount.id == old_trs.commodity_acc_id) \
+#         .first()
+#     proccess_changes = process_storage(commodity_id=old_trs.commodities_id,
+#                                        grade_id=grade_id,
+#                                        unit_id=unit_id,
+#                                        amount_storing=amount_storing,
+#                                        member_com_acc=old_trs.commodity_acc_id,
+#                                        rebag=rebag,
+#                                        stack=stack,
+#                                        clean=clean,
+#                                        destone=destone,
+#                                        store=store,
+#                                        stitch=stitch,
+#                                        load=load,
+#                                        empty_sack=empty_sack,
+#                                        user=user,
+#                                        db=db)
+#     old_changes = process_storage(commodity_id=old_trs.commodities_id,
+#                                   grade_id=old_trs.grade_id,
+#                                   unit_id=old_trs.units_id,
+#                                   amount_storing=old_trs.amount_of_commodity,
+#                                   member_com_acc=old_trs.commodity_acc_id,
+#                                   rebag=old_trs.rebagging_fee,
+#                                   stack=old_trs.stacking_fee,
+#                                   clean=old_trs.cleaning_fee,
+#                                   destone=old_trs.destoning_fee,
+#                                   store=old_trs.storage_fee,
+#                                   stitch=old_trs.stitching_fee,
+#                                   load=old_trs.loading_fee,
+#                                   empty_sack=old_trs.empty_sack_cost_fee,
+#                                   user=user,
+#                                   db=db)
+#
+#     calc_bal = proccess_changes.total_cash_value - old_trs.cash_value
+#
+#     already = db.query(models.MemberCommodityAccCommodities).filter(
+#         models.MemberCommodityAccCommodities.commodities_id == old_trs.commodities_id,
+#         models.MemberCommodityAccCommodities.member_acc_id == old_trs.commodity_acc_id).first()
+#
+#     now_number_of_com = amount_storing - old_trs.amount_of_commodity
+#     now_cash_value = calc_bal
+#     old_units = db.query(models.UnitsKg).filter(models.UnitsKg.id == old_trs.units_id).first()
+#     new_units = proccess_changes.Unit_kg
+#     new_weight = proccess_changes.Weight - (old_units.unit_per_kg * old_trs.amount_of_commodity)
+#     new_tons = proccess_changes.Tons
+#
+#     already.total_number += now_number_of_com
+#     already.commodity_cash_value += now_cash_value
+#     already.weight += new_weight
+#     already.tons = f"{proccess_changes.Tons if already.tons == old_changes.Tons else already.tons}"
+#     already.grades = f"{proccess_changes.Grade if already.grades == old_changes.Grade else already.grades}"
+#     already.units_id = f"{proccess_changes.Unit_kg if already.units_id == old_changes.Unit_kg else already.units_id}"
+#
+#     db.commit()
+#
+#     old_trs.transaction_date = transaction_date
+#     old_trs.amount_of_commodity = amount_storing
+#     old_trs.cash_value = proccess_changes.total_cash_value
+#     old_trs.grade_id = grade_id
+#     old_trs.units_id = unit_id
+#     old_trs.total_cash_balance = old_trs.total_cash_balance + calc_bal
+#     old_trs.rebagging_fee = rebag
+#     old_trs.stacking_fee = stack
+#     old_trs.destoning_fee = destone
+#     old_trs.cleaning_fee = clean
+#     old_trs.stitching_fee = stitch
+#     old_trs.empty_sack_cost_fee = empty_sack
+#     db.commit()
+#
+#     after_trs = db.query(models.CommodityTransactions) \
+#         .filter(func.date(old_trs.transaction_date) < func.date(models.CommodityTransactions.transaction_date),
+#                 models.CommodityTransactions.commodity_acc_id == old_trs.commodity_acc_id,
+#                 models.CommodityTransactions.commodities_id == old_trs.commodities_id) \
+#         .all()
+#
+#     for tr in after_trs:
+#         tr.total_cash_balance += calc_bal
+#         db.commit()
+#     ter_trs = db.query(models.CommodityTransactions) \
+#         .filter(func.date(old_trs.transaction_date) < func.date(models.CommodityTransactions.transaction_date),
+#                 models.CommodityTransactions.commodity_acc_id == old_trs.commodity_acc_id,
+#                 models.CommodityTransactions.commodities_id == old_trs.commodities_id) \
+#         .order_by(desc(models.CommodityTransactions.transaction_id)) \
+#         .first()
+#     member_accounts.cash_value = ter_trs.total_cash_balance
+#     db.commit()
+#
+#     return "Activity Updated"
 
 
 @router.get("/com/transaction/details/{member_commodity_account_id}")
@@ -2050,7 +2523,90 @@ async def get_all_commodity_prices(commodity_id: int,
     price = db.query(models.CommodityGradeValues) \
         .filter(models.CommodityGradeValues.commodities_id == commodity_id) \
         .all()
-    return {"price": price}
+
+    units_joined = db.query(models.CommodityUnitsJoin) \
+        .filter(models.CommodityUnitsJoin.commodity_id == commodity_id) \
+        .all()
+    unit = []
+    for item in units_joined:
+        units = db.query(models.UnitsKg).filter(models.UnitsKg.id == item.unit_per_kg_id).first()
+        unit.append({
+            "units": units.unit_per_kg
+        })
+    return {
+        "price": price,
+        "units": unit
+    }
+
+
+@router.post("/commodity/info/in/warehouse")
+async def commodity_info_in_warehouse(commodity_acc: int = Form(...),
+                                      commodity_id: int = Form(...),
+                                      user: dict = Depends(get_current_user),
+                                      db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    memb = db.query(models.MemberCommodityAccount) \
+        .filter(models.MemberCommodityAccount.commodity_id == commodity_acc) \
+        .all()
+
+    members = db.query(models.Members.member_id,
+                       models.Members.memberImage,
+                       models.Members.firstname,
+                       models.Members.lastname,
+                       models.Members.middlename,
+                       models.Members.phone,
+                       models.Members.address,
+                       models.MemberCommodityAccount.cash_value,
+                       models.MemberCommodityAccount.id,
+                       models.AssociationMembers.passbook_id,
+                       models.Association.association_name,
+                       models.AssociationType.association_type) \
+        .select_from(models.MemberCommodityAccount) \
+        .join(models.Members, models.Members.member_id == models.MemberCommodityAccount.member_id) \
+        .join(models.AssociationMembers,
+              models.AssociationMembers.association_members_id == models.MemberCommodityAccount.association_member_id) \
+        .join(models.Association, models.Association.association_id == models.AssociationMembers.association_id) \
+        .join(models.AssociationType,
+              models.Association.association_type_id == models.AssociationType.associationtype_id) \
+        .join(models.MemberCommodityAccCommodities,
+              models.MemberCommodityAccCommodities.member_acc_id == models.MemberCommodityAccount.id) \
+        .filter(models.MemberCommodityAccount.commodity_id == commodity_acc,
+                models.MemberCommodityAccCommodities.commodities_id == commodity_id) \
+        .all()
+
+    all_members = []
+
+    for item in members:
+        pic = item.memberImage if item.memberImage else None
+        image = base64.b64encode(pic).decode("utf-8") if pic else None
+
+        all_members.append({
+            "member_id": item.member_id,
+            "firstname": item.firstname,
+            "lastname": item.lastname,
+            "middlename": item.middlename,
+            "phone": item.phone,
+            "address": item.address,
+            "cash_value": item.cash_value,
+            "passbook_id": item.passbook_id,
+            "association_name": item.association_name,
+            "association_type": item.association_type,
+            "image": image,
+        })
+
+    total_bags = 0
+    for item in memb:
+        member = db.query(models.MemberCommodityAccCommodities) \
+            .filter(models.MemberCommodityAccCommodities.commodities_id == commodity_id,
+                    models.MemberCommodityAccCommodities.member_acc_id == item.id) \
+            .first()
+        total_bags += member.total_number if member else 0
+
+    return {
+        "total_bags": total_bags,
+        "all_members": all_members,
+    }
 
 
 @router.post("/my/activities/commodity")
@@ -2065,6 +2621,7 @@ async def my_activities_commodity(member_com_acc_id: int = Form(...),
     total_cash_value = 0
     total_bags = 0
     total_balance = 0
+    total_bags_left = 0
 
     if start_date and end_date:
         acts = db.query(models.CommodityTransactions.transaction_id,
@@ -2124,6 +2681,18 @@ async def my_activities_commodity(member_com_acc_id: int = Form(...),
     }
 
 
+@router.get("/act/details/edit/{transaction_id}")
+async def get_transaction_details_for_edit(transaction_id: int,
+                                           user: dict = Depends(get_current_user),
+                                           db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+    dghh = db.query(models.CommodityTransactions) \
+        .filter(models.CommodityTransactions.transaction_id == transaction_id) \
+        .first()
+    return {"details": dghh}
+
+
 @router.delete("/movetotrash/{transaction_id}")
 async def move_activity_to_trash(transaction_id: int,
                                  user: dict = Depends(get_current_user),
@@ -2154,3 +2723,42 @@ async def move_activity_to_trash(transaction_id: int,
     db.commit()
 
     return "Activity deleted successfully"
+
+
+class EditCharges(BaseModel):
+    warehouse_id: int
+    warehouse: Optional[str]
+    community: Optional[str]
+    rebagging_fee: Optional[float]
+    stacking_fee: Optional[float]
+    destoning_fee: Optional[float]
+    cleaning_fee: Optional[float]
+    storage_fee: Optional[float]
+    tax_fee: Optional[float]
+    stitching_fee: Optional[float]
+    loading_fee: Optional[float]
+    empty_sack_cost_fee: Optional[float]
+
+
+@router.post("/commodity/edit/charges")
+async def update_warehouse_and_charges(new: EditCharges,
+                                       user: dict = Depends(get_current_user),
+                                       db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    df = db.query(models.CommodityAccount).filter(models.CommodityAccount.id == new.warehouse_id).first()
+    df.warehouse = new.warehouse if new.warehouse else df.warehouse
+    df.community = new.community if new.community else df.community
+    df.rebagging_fee = new.rebagging_fee if new.rebagging_fee else df.rebagging_fee
+    df.stacking_fee = new.stacking_fee if new.stacking_fee else df.stacking_fee
+    df.destoning_fee = new.destoning_fee if new.destoning_fee else df.destoning_fee
+    df.cleaning_fee = new.cleaning_fee if new.cleaning_fee else df.cleaning_fee
+    df.storage_fee = new.storage_fee if new.storage_fee else df.storage_fee
+    df.tax_fee = new.tax_fee if new.tax_fee else df.tax_fee
+    df.stitching_fee = new.stitching_fee if new.stitching_fee else df.stitching_fee
+    df.loading_fee = new.loading_fee if new.loading_fee else df.loading_fee
+    df.empty_sack_cost_fee = new.empty_sack_cost_fee if new.empty_sack_cost_fee else df.empty_sack_cost_fee
+    db.commit()
+
+    return "Updated Successfully"

@@ -15,6 +15,7 @@ from .auth import get_current_user, get_user_exception
 from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime
+from routers.accounts import process_storage
 
 router = APIRouter(
     prefix="/commodity",
@@ -277,6 +278,10 @@ async def set_price_change(new: SetNewPrice,
 
         # db.add(old)
         db.commit()
+
+        new_price = db.query(models.CommodityGradeValues) \
+            .filter(models.CommodityGradeValues.commodities_id == new.Id) \
+            .all()
         for change in changes:
             units = db.query(models.UnitsKg.id) \
                 .select_from(models.CommodityUnitsJoin) \
@@ -293,6 +298,60 @@ async def set_price_change(new: SetNewPrice,
             )
             db.add(store_track)
             db.commit()
+    trs = db.query(models.CommodityTransactions) \
+        .filter(models.CommodityTransactions.commodities_id == new.Id) \
+        .all()
+
+    for item in trs:
+        new_man = await process_storage(
+            commodity_id=new.Id,
+            grade_id=item.grade_id,
+            unit_id=item.units_id,
+            amount_storing=item.amount_of_commodity,
+            member_com_acc=item.commodity_acc_id,
+            rebag=item.rebagging_fee,
+            stack=item.stacking_fee,
+            clean=item.cleaning_fee,
+            destone=item.destoning_fee,
+            store=item.storage_fee,
+            stitch=item.stitching_fee,
+            load=item.loading_fee,
+            empty_sack=item.empty_sack_cost_fee,
+            user=user,
+            db=db,
+        )
+        balance = item.total_cash_balance - item.cash_value
+        item.cash_value = new_man.get("total_cash_value")
+        item.total_cash_balance = balance + new_man.get("total_cash_value")
+        db.commit()
+
+        foward_balance = db.query(models.CommodityTransactions) \
+            .filter(models.CommodityTransactions.commodity_acc_id == item.commodity_acc_id,
+                    func.date(models.CommodityTransactions.transaction_date) > func.date(item.transaction_date),
+                    models.CommodityTransactions.transaction_id != item.transaction_id) \
+            .all()
+        forw_bal = item.total_cash_balance - (balance + new_man.get("total_cash_value"))
+
+        for iet in foward_balance:
+            iet.total_cash_balance += forw_bal
+            db.commit()
+        set_for_acc = db.query(models.CommodityTransactions) \
+            .filter(models.CommodityTransactions.commodity_acc_id == item.commodity_acc_id) \
+            .order_by(desc(models.CommodityTransactions.transaction_id)) \
+            .first()
+        mem_acc = db.query(models.MemberCommodityAccount) \
+            .filter(models.MemberCommodityAccount.id == item.commodity_acc_id) \
+            .first()
+        mem_acc.cash_value = set_for_acc.total_cash_balance
+        db.commit()
+
+        member_commodity = db.query(models.MemberCommodityAccCommodities) \
+            .filter(models.MemberCommodityAccCommodities.member_acc_id == item.commodity_acc_id,
+                    models.MemberCommodityAccCommodities.commodities_id == item.commodities_id) \
+            .first()
+        cash_vl = member_commodity.commodity_cash_value - item.cash_value
+        member_commodity.commodity_cash_value = cash_vl + new_man.get("total_cash_value")
+        db.commit()
 
     return "Price updated successfully"
 

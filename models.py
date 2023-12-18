@@ -722,6 +722,16 @@ class CommodityTransactions(Base):
     grade_id = Column(Integer, ForeignKey("commodity_grade_values.id"))
     units_id = Column(Integer, ForeignKey("units/kg.id"))
     total_cash_balance = Column(Float)
+    rebagging_fee = Column(Boolean)
+    stacking_fee = Column(Boolean)
+    destoning_fee = Column(Boolean)
+    cleaning_fee = Column(Boolean)
+    storage_fee = Column(Boolean)
+    tax_fee = Column(Boolean)
+    stitching_fee = Column(Boolean)
+    loading_fee = Column(Boolean)
+    empty_sack_cost_fee = Column(Boolean)
+    retriv_bags = Column(Integer)
 
     # Relationships
     thethings = relationship("Commodities", back_populates="things_the")

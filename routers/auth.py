@@ -62,7 +62,7 @@ def create_access_token(username: str, user_id: int,
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(hours=7)
+        expire = datetime.utcnow() + timedelta(hours=1)
     encode.update({"exp": expire})
     return jwt.encode(encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -83,7 +83,7 @@ async def get_current_user(token: str = Depends(oauth2_bearer)):
 async def refresh_access_token(current_user: dict = Depends(get_current_user)):
     user_id = current_user["id"]
     username = current_user["username"]
-    token_expires = timedelta(hours=7)
+    token_expires = timedelta(hours=1)
     new_token = create_access_token(username, user_id, expires_delta=token_expires)
 
     return {"token": new_token}
