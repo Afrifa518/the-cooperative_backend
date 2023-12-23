@@ -14,7 +14,7 @@ from sqlalchemy.ext.declarative import declarative_base
 # MAIL_FROM_NAME=os.getenv("MAIL_FROM_NAME")
 # service_id = service_c9e4iwy
 
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost/FinanceDept")
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL
 )

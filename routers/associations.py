@@ -231,7 +231,8 @@ async def get_association_id(psb_id: int,
 
     details = db.query(models.Association.association_name,
                        models.AssociationType.association_type,
-                       models.Society.society) \
+                       models.Society.society,
+                       models.Society.id) \
         .select_from(models.AssociationMembers) \
         .join(models.Association, models.Association.association_id == models.AssociationMembers.association_id) \
         .join(models.AssociationType,

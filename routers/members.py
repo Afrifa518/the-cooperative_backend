@@ -696,6 +696,7 @@ async def get_every_member(association_id: int,
     association_members = db.query(models.Members.member_id,
                                    models.Members.firstname,
                                    models.Members.lastname,
+                                   models.Members.ghcardnumber,
                                    models.Association.association_name) \
         .join(models.AssociationMembers, models.AssociationMembers.members_id == models.Members.member_id) \
         .join(models.Association, models.AssociationMembers.association_id == models.Association.association_id) \
@@ -710,6 +711,7 @@ async def get_every_member(association_id: int,
             member_id,
             firstname,
             lastname,
+            ghcardnumber,
             association_name
         ) = association_member
 
@@ -717,12 +719,14 @@ async def get_every_member(association_id: int,
             "member_id": member_id,
             "firstname": firstname,
             "lastname": lastname,
+            "ghcardnumber": ghcardnumber,
             "association_name": association_name
         })
 
     individual_members = db.query(models.Members.member_id,
                                   models.Members.firstname,
-                                  models.Members.lastname) \
+                                  models.Members.lastname,
+                                  models.Members.ghcardnumber) \
         .outerjoin(models.AssociationMembers, models.Members.member_id == models.AssociationMembers.members_id) \
         .filter(models.AssociationMembers.members_id.is_(None)) \
         .order_by(desc(models.Members.member_id)) \
@@ -734,12 +738,14 @@ async def get_every_member(association_id: int,
             member_id,
             firstname,
             lastname,
+            ghcardnumber
         ) = individual_member
 
         indivMembers.append({
             "Member_id": member_id,
             "Firstname": firstname,
             "Lastname": lastname,
+            "GhCardNumber": ghcardnumber
         })
 
     return {"Association_members": assoMembers, "Individual_members": indivMembers}

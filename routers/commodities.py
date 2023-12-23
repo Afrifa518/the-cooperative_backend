@@ -1,3 +1,4 @@
+import base64
 import sys
 
 from sqlalchemy import desc, func
@@ -5,7 +6,7 @@ from sqlalchemy import desc, func
 sys.path.append("../..")
 
 from typing import Optional, List
-from fastapi import Depends, HTTPException, APIRouter, status
+from fastapi import Depends, HTTPException, APIRouter, status, Form
 import models
 from collections import defaultdict
 from database import engine, SessionLocal
@@ -174,6 +175,15 @@ async def create_new_commodity(data_nkoa: CommoditiesCreate,
                                db: Session = Depends(get_db)):
     if user is None:
         raise get_user_exception()
+    fgh = db.query(models.Commodities) \
+        .select_from(models.SocietyCommodities) \
+        .join(models.Commodities, models.SocietyCommodities.commodities_id == models.Commodities.id) \
+        .filter(models.SocietyCommodities.society_id == data_nkoa.society_id,
+                models.Commodities.commodity.ilike(data_nkoa.commodity)) \
+        .all()
+
+    if len(fgh) > 0:
+        return "Commodity already exists"
 
     commodity_model = models.Commodities()
     commodity_model.commodity = data_nkoa.commodity
@@ -390,3 +400,71 @@ async def get_price_traking_table(user: dict = Depends(get_current_user),
     filtered_tracks = list(unique_tracks.values())
 
     return {"Tracks": filtered_tracks}
+
+
+@router.post("/soc/commodity/trade")
+async def get_all_commodities_in_society_with_member_account(society_id: int = Form(...),
+                                                             search: Optional[str] = Form(None),
+                                                             user: dict = Depends(get_current_user),
+                                                             db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    if search is not None:
+        deep = db.query(models.Commodities) \
+            .select_from(models.SocietyCommodities) \
+            .join(models.Commodities, models.SocietyCommodities.commodities_id == models.Commodities.id) \
+            .filter(models.SocietyCommodities.society_id == society_id) \
+            .filter(models.Commodities.commodity.ilike(f"%{search}%")) \
+            .all()
+    else:
+        deep = db.query(models.Commodities) \
+            .select_from(models.SocietyCommodities) \
+            .join(models.Commodities, models.SocietyCommodities.commodities_id == models.Commodities.id) \
+            .filter(models.SocietyCommodities.society_id == society_id) \
+            .all()
+
+    return {"deep": deep}
+
+
+@router.post("/the/other/side")
+async def get_member_info_and_commodity_info_if_owned(member_acc_id: int = Form(...),
+                                                      commodity_id: int = Form(...),
+                                                      user: dict = Depends(get_current_user),
+                                                      db: Session = Depends(get_db)):
+    if user is None:
+        raise get_user_exception()
+
+    member_details = db.query(models.Members) \
+        .select_from(models.MemberCommodityAccount) \
+        .join(models.Members, models.Members.member_id == models.MemberCommodityAccount.member_id) \
+        .filter(models.MemberCommodityAccount.id == member_acc_id) \
+        .first()
+
+    commodity_details = db.query(models.MemberCommodityAccCommodities) \
+        .select_from(models.MemberCommodityAccCommodities) \
+        .filter(models.MemberCommodityAccCommodities.commodities_id == commodity_id,
+                models.MemberCommodityAccCommodities.member_acc_id == member_acc_id) \
+        .first()
+
+    pic = member_details.memberImage if member_details.memberImage else None
+    image = base64.b64encode(pic).decode("utf-8") if pic else None
+
+    if commodity_details is None:
+        return {
+            "member_image": image,
+            "member_name": member_details.firstname + " " + member_details.lastname,
+            "bags": 0,
+            "value": 0,
+            "weight": 0,
+            "exist": "no"
+        }
+    else:
+        return {
+            "member_image": image,
+            "member_name": member_details.firstname + " " + member_details.lastname,
+            "bags": commodity_details.total_number,
+            "value": commodity_details.commodity_cash_value,
+            "weight": commodity_details.weight,
+            "exist": "yes"
+        }
