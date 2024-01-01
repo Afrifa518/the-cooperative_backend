@@ -7,10 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 
 
-
+# , "http://localhost:3000""ORIGIN",
 app = FastAPI()
 # handler = Mangum(app)
-origin = os.getenv("ORIGIN", "http://localhost:3000")
+# origin = os.getenv("https://the-cooperative-frontend.vercel.app")
 
 app.add_middleware(
     CORSMiddleware,
@@ -18,7 +18,7 @@ app.add_middleware(
     allow_headers=["*"],
     allow_credentials=True,
     # allow_origins=[""])
-    allow_origins=[origin])
+    allow_origins=["https://the-cooperative-frontend.vercel.app"])
 
 
 models.Base.metadata.create_all(bind=engine)

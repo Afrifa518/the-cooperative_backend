@@ -13,8 +13,8 @@ from sqlalchemy.ext.declarative import declarative_base
 # MAIL_SERVER=os.getenv("MAIL_SERVER")
 # MAIL_FROM_NAME=os.getenv("MAIL_FROM_NAME")
 # service_id = service_c9e4iwy
-
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost/FinanceDept")
+#"DATABASE_URL",
+SQLALCHEMY_DATABASE_URL = "postgresql://afrifa518:Kindomlife518@my-db-instance.cx8m0iesmzvp.eu-west-2.rds.amazonaws.com/theCooperativeDb"
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL
 )
