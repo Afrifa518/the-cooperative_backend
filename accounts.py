@@ -924,7 +924,6 @@ async def create_loan(loan: LoanAccount,
         raise get_user_exception()
 
     namfwed = db.query(models.LoanAccount).all()
-
     if loan.id:
         loan_model = db.query(models.LoanAccount).filter(models.LoanAccount.id == loan.id).first()
         loan_model.account_name = loan.account_name
@@ -938,22 +937,35 @@ async def create_loan(loan: LoanAccount,
         db.commit()
         return "Changes done successfully"
     else:
-        for ff in namfwed:
-            if ff.account_name == loan.account_name:
-                return "Loan Account Name Exists"
-            else:
-                loan_model = models.LoanAccount()
-                loan_model.account_name = loan.account_name
-                loan_model.interest_amt = loan.interest_amt
-                loan_model.application_fee = loan.application_fee
-                loan_model.proccessing_fee = loan.proccessing_fee
-                loan_model.min_amt = loan.min_amt
-                loan_model.max_amt = loan.max_amt
-                db.add(loan_model)
-                db.flush()
-                db.commit()
+        if namfwed:
+            for ff in namfwed:
+                if ff.account_name == loan.account_name:
+                    return "Loan Account Name Exists"
+                else:
+                    loan_model = models.LoanAccount()
+                    loan_model.account_name = loan.account_name
+                    loan_model.interest_amt = loan.interest_amt
+                    loan_model.application_fee = loan.application_fee
+                    loan_model.proccessing_fee = loan.proccessing_fee
+                    loan_model.min_amt = loan.min_amt
+                    loan_model.max_amt = loan.max_amt
+                    db.add(loan_model)
+                    db.flush()
+                    db.commit()
+                    return "Setup Complete"
+        else:
+            loan_model = models.LoanAccount()
+            loan_model.account_name = loan.account_name
+            loan_model.interest_amt = loan.interest_amt
+            loan_model.application_fee = loan.application_fee
+            loan_model.proccessing_fee = loan.proccessing_fee
+            loan_model.min_amt = loan.min_amt
+            loan_model.max_amt = loan.max_amt
+            db.add(loan_model)
+            db.flush()
+            db.commit()
+            return "Setup Complete"
 
-                return "Setup Complete"
 
 
 class MemberLoan(BaseModel):
@@ -1520,7 +1532,6 @@ async def search_specific_member(account_id: int = Form(...),
             "image": image,
             "commodities": commodities
         })
-
 
     return {
         "all_members": all_members
