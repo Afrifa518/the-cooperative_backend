@@ -982,7 +982,7 @@ async def create_member_loan_account(acc: MemberLoan,
     return "New Account Activated"
 
 
-@router.get("/loan/")
+@router.get("/loan/hh")
 async def get_loans(user: dict = Depends(get_current_user),
                     db: Session = Depends(get_db)):
     if user is None:
@@ -1034,7 +1034,7 @@ async def create_member_loan_account(acc: MemberShare,
     return "New Account Activated"
 
 
-@router.get("/share/")
+@router.get("/share/hh")
 async def get_shares(user: dict = Depends(get_current_user),
                      db: Session = Depends(get_db)):
     if user is None:
